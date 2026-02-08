@@ -1,4 +1,4 @@
-# Skill Installer
+# Agent Skills RS
 
 A Rust library for installing and managing agent skills with embedded skill support.
 
@@ -45,7 +45,7 @@ The CLI installs skill(s) embedded in the binary by default.
 ### Basic Installation Flow
 
 ```rust
-use skill_installer::*;
+use agent_skills_rs::*;
 use tempfile::TempDir;
 
 // Setup
@@ -78,7 +78,7 @@ lock_manager.update_entry(&skills[0].name, &source, &installed_path).unwrap();
 ### CLI Introspection
 
 ```rust
-use skill_installer::*;
+use agent_skills_rs::*;
 
 // Get all commands as JSON
 let commands_json = output_commands_json().unwrap();

@@ -56,7 +56,7 @@ Output includes JSON Schema for install options (`agent`, `skill`, `global`, `ye
 ### Basic Installation Flow
 
 ```rust
-use skill_installer::*;
+use agent_skills_rs::*;
 use std::path::PathBuf;
 
 // Setup paths
@@ -90,7 +90,7 @@ for skill in &skills {
 ### Introspection
 
 ```rust
-use skill_installer::*;
+use agent_skills_rs::*;
 
 // Get all commands
 let commands = get_commands();
@@ -173,12 +173,12 @@ To integrate this library into your own CLI:
 1. Add dependency to `Cargo.toml`:
    ```toml
    [dependencies]
-   skill_installer = { path = "path/to/skill_installer" }
+   agent-skills-rs = { path = "path/to/agent-skills-rs" }
    ```
 
 2. Import and use:
    ```rust
-   use skill_installer::*;
+    use agent_skills_rs::*;
    ```
 
 3. Follow the basic installation flow shown above
