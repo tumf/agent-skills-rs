@@ -1,6 +1,23 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+fn deserialize_lock_version<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum LockVersion {
+        String(String),
+        Integer(i64),
+    }
+
+    match LockVersion::deserialize(deserializer)? {
+        LockVersion::String(version) => Ok(version),
+        LockVersion::Integer(version) => Ok(version.to_string()),
+    }
+}
+
 /// Represents a skill definition
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Skill {
@@ -77,6 +94,7 @@ pub struct LockEntry {
 /// Lock file structure
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct SkillLock {
+    #[serde(deserialize_with = "deserialize_lock_version")]
     pub version: String,
     #[serde(default)]
     pub skills: HashMap<String, LockEntry>,
@@ -145,5 +163,17 @@ mod tests {
         let json = serde_json::to_string(&entry).unwrap();
         let deserialized: LockEntry = serde_json::from_str(&json).unwrap();
         assert_eq!(entry, deserialized);
+    }
+
+    #[test]
+    fn test_skill_lock_deserializes_integer_version() {
+        let json = r#"{
+            "version": 3,
+            "skills": {}
+        }"#;
+
+        let lock: SkillLock = serde_json::from_str(json).unwrap();
+        assert_eq!(lock.version, "3");
+        assert!(lock.skills.is_empty());
     }
 }

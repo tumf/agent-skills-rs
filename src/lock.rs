@@ -249,4 +249,25 @@ mod tests {
         assert!(entry.source_url.is_none());
         assert!(!entry.skill_folder_hash.is_empty());
     }
+
+    #[test]
+    fn test_load_legacy_lock_with_integer_version() {
+        let temp_dir = TempDir::new().unwrap();
+        let lock_path = temp_dir.path().join(".skill-lock.json");
+
+        fs::write(
+            &lock_path,
+            r#"{
+  "version": 3,
+  "skills": {}
+}"#,
+        )
+        .unwrap();
+
+        let manager = LockManager::new(lock_path);
+        let lock = manager.load().unwrap();
+
+        assert_eq!(lock.version, "3");
+        assert!(lock.skills.is_empty());
+    }
 }

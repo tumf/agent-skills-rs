@@ -28,17 +28,15 @@ enum Commands {
     },
     /// Install a skill
     InstallSkill {
-        /// Source type or identifier (github, gitlab, local, direct, self, embedded)
-        source: String,
         /// Target agent name for agent-specific installation
         #[arg(long)]
         agent: Option<String>,
         /// Specific skill name to install
         #[arg(long)]
         skill: Option<String>,
-        /// Install globally (default: true)
+        /// Install globally (default: project-local)
         #[arg(long)]
-        global: Option<bool>,
+        global: bool,
         /// Skip confirmation prompts
         #[arg(long)]
         yes: bool,
@@ -60,7 +58,7 @@ fn main() -> Result<()> {
                 println!("Available commands:");
                 println!("  commands --output json");
                 println!("  schema --command <name> --output json-schema");
-                println!("  install-skill <source> [--yes] [--non-interactive]");
+                println!("  install-skill [--global] [--yes] [--non-interactive]");
             }
         }
         Commands::Schema { command, output } => {
@@ -72,7 +70,6 @@ fn main() -> Result<()> {
             }
         }
         Commands::InstallSkill {
-            source,
             agent,
             skill,
             global,
@@ -80,10 +77,9 @@ fn main() -> Result<()> {
             non_interactive,
         } => {
             install_skill_command(
-                &source,
                 agent.as_deref(),
                 skill.as_deref(),
-                global.unwrap_or(true),
+                global,
                 yes || non_interactive,
             )?;
         }
@@ -93,78 +89,37 @@ fn main() -> Result<()> {
 }
 
 fn install_skill_command(
-    source_str: &str,
     _agent: Option<&str>,
     skill_filter: Option<&str>,
     is_global: bool,
     auto_confirm: bool,
 ) -> Result<()> {
-    // Determine source type
-    let source_type = match source_str.to_lowercase().as_str() {
-        "self" | "embedded" => SourceType::Self_,
-        "github" => SourceType::Github,
-        "gitlab" => SourceType::Gitlab,
-        "local" => SourceType::Local,
-        "direct" => SourceType::Direct,
-        _ => {
-            anyhow::bail!("Unknown source type: {}", source_str);
-        }
-    };
-
-    // For mock-first approach: create placeholder URL for GitHub/GitLab/Direct
-    let url = match source_type {
-        SourceType::Github => Some("https://github.com/mock/skills".to_string()),
-        SourceType::Gitlab => Some("https://gitlab.com/mock/skills".to_string()),
-        SourceType::Direct => Some("https://example.com/skills".to_string()),
-        _ => None,
-    };
-
     let source = Source {
-        source_type,
-        url,
+        source_type: SourceType::Self_,
+        url: None,
         subpath: None,
         skill_filter: skill_filter.map(|s| s.to_string()),
         ref_: None,
     };
 
     // Setup paths
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let canonical_dir = PathBuf::from(&home).join(".agents/skills");
-    let lock_path = if is_global {
-        Some(PathBuf::from(&home).join(".agents/.skill-lock.json"))
+    let base_dir = if is_global {
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
     } else {
-        None
+        std::env::current_dir()?
     };
+    let canonical_dir = base_dir.join(".agents/skills");
+    let lock_path = base_dir.join(".agents/.skill-lock.json");
 
-    println!("Discovering skills from source: {}", source_str);
-
-    // Create mock provider for external sources (GitHub, GitLab, Direct)
-    let mock_skill = Skill {
-        name: "mock-skill".to_string(),
-        description: "A mock skill for testing".to_string(),
-        path: None,
-        raw_content: r#"---
-name: mock-skill
-description: A mock skill for testing
----
-
-# Mock Skill
-
-This is a mock skill installed via provider.
-"#
-        .to_string(),
-        metadata: types::SkillMetadata::default(),
-    };
-
-    let provider = MockProvider::new(vec![mock_skill]).with_hash("mock-provider-hash".to_string());
-    let provider_ref: Option<&dyn SkillProvider> = match source.source_type {
-        SourceType::Github | SourceType::Gitlab | SourceType::Direct => Some(&provider),
-        _ => None,
-    };
+    if is_global {
+        println!("Discovering embedded skills (scope: global)");
+    } else {
+        println!("Discovering embedded skills (scope: project)");
+    }
 
     // Discover skills
     let config = DiscoveryConfig::default();
-    let mut skills = discover_skills_with_provider(&source, &config, provider_ref)?;
+    let mut skills = discover_skills(&source, &config)?;
 
     if skills.is_empty() {
         println!("No skills found.");
@@ -200,29 +155,17 @@ This is a mock skill installed via provider.
         println!("Installing skill '{}'...", skill.name);
 
         let install_config = InstallConfig::new(canonical_dir.clone());
-        let result = install_skill_with_provider(skill, &install_config, provider_ref)?;
+        let result = install_skill(skill, &install_config)?;
 
         println!("  Installed to: {}", result.path.display());
         if result.symlink_failed {
             println!("  Note: Symlink failed, used copy instead.");
         }
 
-        // Update lock file only for global installations
-        if let Some(ref lock_path) = lock_path {
-            let lock_manager = LockManager::new(lock_path.clone());
+        let lock_manager = LockManager::new(lock_path.clone());
+        lock_manager.update_entry(&skill.name, &source, &result.path)?;
 
-            // Use provider hash for external sources, compute hash for local/embedded
-            if let Some(provider) = provider_ref {
-                let hash = provider.get_folder_hash(skill)?;
-                lock_manager.update_entry_with_hash(&skill.name, &source, &result.path, hash)?;
-            } else {
-                lock_manager.update_entry(&skill.name, &source, &result.path)?;
-            }
-
-            println!("  Lock file updated.");
-        } else {
-            println!("  Local installation (no lock file update).");
-        }
+        println!("  Lock file updated: {}", lock_path.display());
     }
 
     println!("\nInstallation complete!");

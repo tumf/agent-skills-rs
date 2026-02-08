@@ -54,25 +54,9 @@ pub fn get_commands() -> Vec<Command> {
     vec![
         Command {
             name: "install-skill".to_string(),
-            description: "Install a skill from various sources".to_string(),
+            description: "Install embedded skill(s) bundled in the binary".to_string(),
             subcommands: None,
             arguments: Some(vec![
-                Argument {
-                    name: "source".to_string(),
-                    description:
-                        "Source type or identifier (github, gitlab, local, direct, self, embedded)"
-                            .to_string(),
-                    arg_type: "string".to_string(),
-                    required: true,
-                    choices: Some(vec![
-                        "github".to_string(),
-                        "gitlab".to_string(),
-                        "local".to_string(),
-                        "direct".to_string(),
-                        "self".to_string(),
-                        "embedded".to_string(),
-                    ]),
-                },
                 Argument {
                     name: "agent".to_string(),
                     description: "Target agent name for agent-specific installation".to_string(),
@@ -90,7 +74,7 @@ pub fn get_commands() -> Vec<Command> {
                 },
                 Argument {
                     name: "global".to_string(),
-                    description: "Install globally (default: true)".to_string(),
+                    description: "Install globally (default: project-local)".to_string(),
                     arg_type: "boolean".to_string(),
                     required: false,
                     choices: None,
@@ -209,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn test_install_skill_command_has_self_and_embedded() {
+    fn test_install_skill_command_has_no_source_argument() {
         let commands = get_commands();
         let install_cmd = commands.iter().find(|c| c.name == "install-skill").unwrap();
 
@@ -218,12 +202,9 @@ mod tests {
             .as_ref()
             .unwrap()
             .iter()
-            .find(|a| a.name == "source")
-            .unwrap();
+            .find(|a| a.name == "source");
 
-        let choices = source_arg.choices.as_ref().unwrap();
-        assert!(choices.contains(&"self".to_string()));
-        assert!(choices.contains(&"embedded".to_string()));
+        assert!(source_arg.is_none());
     }
 
     #[test]
@@ -247,11 +228,8 @@ mod tests {
         assert_eq!(parsed["ok"], true);
         assert!(parsed["schema"]["properties"].is_object());
 
-        // Verify source enum includes self and embedded
-        let source_prop = &parsed["schema"]["properties"]["source"];
-        let enum_values = source_prop["enum"].as_array().unwrap();
-        assert!(enum_values.iter().any(|v| v == "self"));
-        assert!(enum_values.iter().any(|v| v == "embedded"));
+        // Source is fixed to embedded and should not be user-specified
+        assert!(parsed["schema"]["properties"]["source"].is_null());
     }
 
     #[test]
@@ -283,7 +261,7 @@ mod tests {
         );
         assert_eq!(
             parsed["schema"]["properties"]["global"]["description"],
-            "Install globally (default: true)"
+            "Install globally (default: project-local)"
         );
     }
 
