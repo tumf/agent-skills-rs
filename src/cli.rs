@@ -93,6 +93,13 @@ pub fn get_commands() -> Vec<Command> {
                     required: false,
                     choices: None,
                 },
+                Argument {
+                    name: "json".to_string(),
+                    description: "Output result as JSON".to_string(),
+                    arg_type: "boolean".to_string(),
+                    required: false,
+                    choices: None,
+                },
             ]),
         },
         Command {
