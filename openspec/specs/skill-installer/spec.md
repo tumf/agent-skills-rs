@@ -1,35 +1,49 @@
 # skill-installer Specification
 
 ## Purpose
-TBD - created by archiving change add-rust-skill-installer. Update Purpose after archive.
+Rust library for installing and managing agent skills with embedded skill support. Provides skill discovery from multiple sources, installation with symlink/copy modes, canonical path management, and lock file tracking.
+
 ## Requirements
-### Requirement: スキル発見の優先探索
-`discover` MUST は優先ディレクトリ（`skills/`, `skills/.curated/`, `.agents/skills/`, `.claude/skills/` など）を順に探索し、`SKILL.md` の frontmatter に `name` と `description` が存在するもののみをスキルとして返すこと。
+### Requirement: Priority Directory Discovery
+`discover` MUST search priority directories (`skills/`, `skills/.curated/`, `.agents/skills/`, `.claude/skills/`, etc.) in order and return only skills whose `SKILL.md` frontmatter contains both `name` and `description` fields.
 
-#### Scenario: 優先探索と internal フィルタ
-あるリポジトリに `skills/alpha/SKILL.md` と `.agents/skills/beta/SKILL.md` が存在し、`beta` の frontmatter に `metadata.internal: true` が設定されている。`INSTALL_INTERNAL_SKILLS` が未設定の場合、`discover` は `alpha` のみを返す。
+#### Scenario: Priority search with internal filter
+Given a repository with `skills/alpha/SKILL.md` and `.agents/skills/beta/SKILL.md`, where `beta`'s frontmatter has `metadata.internal: true` set. When `INSTALL_INTERNAL_SKILLS` is unset, `discover` returns only `alpha`.
 
-### Requirement: 埋め込みスキルソース（self/embedded）の提供
-CLI MUST は `install-skill self` または `install-skill embedded` を受け付け、コンパイル時に埋め込まれた `SKILL.md` 等の実コンテンツをソースとして解決できること。`self` と `embedded` は同義として扱うこと。
+### Requirement: Embedded Skill Installation
+CLI MUST use the `install-skill` command to automatically resolve `SKILL.md` and other content embedded at compile time as the source. No external source specification is required.
 
-#### Scenario: self 指定で埋め込みスキルを解決
-`my-command install-skill self --yes` を実行した場合、実装は外部provider（clone/fetch）を呼び出さず、埋め込みコンテンツからスキルを解決してインストール処理へ進む。
+#### Scenario: Automatic resolution of embedded skills
+When running `my-command install-skill --yes`, the implementation resolves skills from embedded content and proceeds to installation without calling external providers (clone/fetch).
 
-### Requirement: Canonical path とインストール方式
-`install` MUST は canonical path（`.agents/skills/<skill-name>`）を単一の真実の源として扱い、`symlink` または `copy` のモードでインストールできること。`symlink` 失敗時は `copy` にフォールバックすること。
+### Requirement: Default Installation Scope
+CLI MUST install to project-local scope (`./.agents/...`) when the `--global` flag is not specified. Only when the `--global` flag is specified should it install to global scope (`~/.agents/...`).
 
-#### Scenario: symlink 失敗時のフォールバック
-`symlink` が許可されていない環境で `install` を実行した場合、インストール結果は `symlinkFailed = true` を含み、実ファイルは `copy` と同様に配置される。
+#### Scenario: Default is project-local installation
+When running `my-command install-skill --yes` (without `--global`), the skill is placed in `./.agents/skills/<skill-name>` and the lock file is recorded in `./.agents/.skill-lock.json`.
 
-#### Scenario: embedded ソースでも canonical 処理を共通適用
-`my-command install-skill embedded --yes` を実行した場合、埋め込みスキルは `.agents/skills/<skill-name>` に配置され、その後の agent 別配布は通常ソースと同じ symlink/copy 規則で実行される。
+#### Scenario: Global installation with --global flag
+When running `my-command install-skill --global --yes`, the skill is placed in `~/.agents/skills/<skill-name>` and the lock file is recorded in `~/.agents/.skill-lock.json`.
 
-### Requirement: ロックファイル更新（globalのみ）
-`install` MUST は global スコープで成功した場合、`~/.agents/.skill-lock.json` に `source`, `sourceType`, `sourceUrl`, `skillFolderHash` を記録すること。ローカルスコープでは記録しないこと。
+### Requirement: Canonical Path and Installation Mode
+`install` MUST treat the canonical path (`.agents/skills/<skill-name>`) as the single source of truth and support installation in either `symlink` or `copy` mode. When `symlink` fails, it MUST fallback to `copy`.
 
-#### Scenario: GitHub ソースのロック更新
-GitHub 由来のスキルを global にインストールした場合、ロックファイルに `skillFolderHash` が保存される。local ソースの場合は `skillFolderHash` が空文字でも良い。
+#### Scenario: Fallback on symlink failure
+When `install` is executed in an environment where `symlink` is not permitted, the installation result includes `symlinkFailed = true` and the actual files are placed as with `copy`.
 
-#### Scenario: embedded ソースのロック更新
-埋め込みスキルを global にインストールした場合、ロックファイルには `sourceType` として `embedded`（または同義の `self`）が記録され、`skillFolderHash` は外部APIを使わず算出された決定的な値で保存される。
+#### Scenario: Common canonical processing for embedded skills
+When running `my-command install-skill --yes`, embedded skills are placed in `.agents/skills/<skill-name>` and subsequent agent-specific distribution follows the same symlink/copy rules as regular sources.
 
+### Requirement: Lock File Update
+`install` MUST record `source`, `sourceType`, `sourceUrl`, and `skillFolderHash` in the scope-appropriate lock file upon successful installation.
+- project-local scope: `./.agents/.skill-lock.json`
+- global scope: `~/.agents/.skill-lock.json`
+
+#### Scenario: Lock update in project-local scope
+When running `my-command install-skill --yes` (without `--global`), the lock file is recorded in `./.agents/.skill-lock.json`.
+
+#### Scenario: Lock update in global scope
+When running `my-command install-skill --global --yes`, the lock file is recorded in `~/.agents/.skill-lock.json`.
+
+#### Scenario: Lock update for embedded skills
+When installing embedded skills, the lock file records `sourceType` as `self` and `skillFolderHash` is stored as a deterministic value computed without using external APIs.

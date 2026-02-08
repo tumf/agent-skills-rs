@@ -20,13 +20,7 @@ This is an embedded skill that provides Rust library functionality for installin
 Install this skill using:
 
 ```bash
-my-command install-skill self
-```
-
-or
-
-```bash
-my-command install-skill embedded
+my-command install-skill --yes
 ```
 
 ## Implementation

@@ -1,20 +1,17 @@
 # cli-introspection Specification
 
 ## Purpose
-TBD - created by archiving change add-rust-skill-installer. Update Purpose after archive.
+Provides machine-readable introspection capabilities for CLI commands, enabling agents and automation tools to discover available commands and their schemas programmatically.
+
 ## Requirements
-### Requirement: コマンド一覧のJSON出力
-CLI MUST は `commands --output json` を提供し、トップレベルに `schemaVersion`, `type`, `ok` を含むJSONを返すこと。
+### Requirement: JSON Output for Command List
+CLI MUST provide `commands --output json` and return JSON with `schemaVersion`, `type`, and `ok` at the top level.
 
-#### Scenario: コマンド一覧の取得
-`my-command commands --output json` を実行すると、`ok: true` と `type: commands.list` を含むJSONがstdoutに出力される。
+#### Scenario: Retrieving command list
+When running `my-command commands --output json`, JSON containing `ok: true` and `type: commands.list` is output to stdout.
 
-### Requirement: コマンドスキーマのJSON Schema出力
-CLI MUST は `schema --command install-skill --output json-schema` を提供し、引数・オプションのJSON Schemaを返すこと。
+### Requirement: JSON Schema Output for Command Schema
+CLI MUST provide `schema --command install-skill --output json-schema` and return the JSON Schema for arguments and options.
 
-#### Scenario: install-skill のスキーマ取得
-`my-command schema --command install-skill --output json-schema` を実行すると、`install-skill` の引数（`--agent`, `--skill`, `--yes`, `--global` など）が定義されたJSON Schemaがstdoutに出力される。
-
-#### Scenario: self/embedded 入力のスキーマ反映
-`my-command schema --command install-skill --output json-schema` の結果には、スキルソース指定として `self` と `embedded`（同義）が有効値として含まれる。
-
+#### Scenario: Retrieving install-skill schema
+When running `my-command schema --command install-skill --output json-schema`, a JSON Schema defining the arguments for `install-skill` (`--agent`, `--skill`, `--yes`, `--global`, etc.) is output to stdout. The default value for `--global` is `false` (project-local).

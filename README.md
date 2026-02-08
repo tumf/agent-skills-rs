@@ -25,13 +25,9 @@ This library provides a Rust implementation of skill installation functionality 
 - **Lock Management**: Track installed skills with deterministic hashing
 - **Embedded Skills**: Bundle skills into the binary at compile time using `include_str!`
 
-### Self/Embedded Skills
+### Embedded Skills
 
-The library supports two aliases for the same functionality:
-- `self`: Install skills embedded in the binary
-- `embedded`: Same as `self`, provided for compatibility
-
-Both keywords deserialize to the same internal type and provide identical behavior.
+The CLI installs skill(s) embedded in the binary by default.
 
 ## Architecture
 

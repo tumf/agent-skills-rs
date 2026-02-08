@@ -14,19 +14,18 @@ The `my-command` binary demonstrates the library functionality:
 
 #### Install Embedded Skill
 
-Install the skill bundled in the binary (no network access required):
+Install skill(s) bundled in the binary (no network access required):
 
 ```bash
-my-command install-skill self --yes
+my-command install-skill --yes
 ```
 
-Or use the `embedded` alias:
+Default scope is project-local (`./.agents/...`).
+Use `--global` to install under `~/.agents/...` instead:
 
 ```bash
-my-command install-skill embedded --yes
+my-command install-skill --global --yes
 ```
-
-Both commands produce identical results.
 
 #### List Available Commands
 
@@ -50,7 +49,7 @@ Output:
 my-command schema --command install-skill --output json-schema
 ```
 
-Output includes JSON Schema with `self` and `embedded` as valid enum values for the `source` parameter.
+Output includes JSON Schema for install options (`agent`, `skill`, `global`, `yes`, `non-interactive`).
 
 ## Library Usage
 
@@ -148,7 +147,7 @@ cargo test -- --nocapture
 
 ## Verification
 
-After installing a skill with `my-command install-skill self --yes`:
+After installing a skill with `my-command install-skill --yes`:
 
 1. Check installed skill:
    ```bash
