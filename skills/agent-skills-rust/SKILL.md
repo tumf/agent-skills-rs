@@ -7,12 +7,15 @@ description: Guide for integrating the agent-skills-rs Rust library and optional
 
 Use this skill to implement or explain how to add `agent-skills-rs` into a Rust project.
 
-## Follow this workflow
+## Recommended implementation order
 
-1. Add dependency and verify compile.
-2. Implement library-based installation flow.
-3. Optionally expose a CLI command for installation.
-4. Verify with formatting, linting, and tests.
+1. Rename command surface to `install-skills` everywhere (routing, help, usage, introspection, schema, tests).
+2. Add `agent-skills-rs = "<current release>"` and verify compile.
+3. Implement argument parsing for `install-skills <source> [--global]`.
+4. Implement install destination and lock-path resolution for project and global mode.
+5. Restrict source schemes to `self` and `local:<path>`, fail fast on unknown schemes.
+6. Stabilize JSON output shape and wire integration tests through full CLI paths.
+7. Run format, lint, and tests.
 
 ## Add dependency
 
@@ -20,7 +23,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-agent-skills-rs = "0.1"
+agent-skills-rs = "<current release>"
 ```
 
 If local development is required, use a path dependency instead:
@@ -37,7 +40,7 @@ Use the library API in this order:
 1. Build a `Source` (embedded source uses `SourceType::Self_`).
 2. Run discovery with `discover_skills`.
 3. Install each skill with `install_skill` and `InstallConfig`.
-4. Update `.agents/.skill-lock.json` via `LockManager`.
+4. Update lock file via `LockManager` using the same scope base as install destination.
 
 Use this baseline snippet:
 
@@ -48,9 +51,19 @@ use agent_skills_rs::{
 use anyhow::Result;
 use std::path::PathBuf;
 
-pub fn install_embedded_skills(base_dir: PathBuf) -> Result<()> {
-    let canonical_dir = base_dir.join(".agents/skills");
-    let lock_path = base_dir.join(".agents/.skill-lock.json");
+pub fn install_skills(base_dir: PathBuf, global: bool) -> Result<()> {
+    let home_dir = std::env::var("HOME").map(PathBuf::from)?;
+    let (canonical_dir, lock_path) = if global {
+        (
+            home_dir.join(".agents/skills"),
+            home_dir.join(".agents/.skill-lock.json"),
+        )
+    } else {
+        (
+            base_dir.join(".agents/skills"),
+            base_dir.join(".agents/.skill-lock.json"),
+        )
+    };
 
     let source = Source {
         source_type: SourceType::Self_,
@@ -75,6 +88,26 @@ pub fn install_embedded_skills(base_dir: PathBuf) -> Result<()> {
 }
 ```
 
+## Source parsing and validation
+
+Support only these source forms:
+
+- `self` (embedded skills)
+- `local:<path>`
+
+Reject any unknown scheme immediately with an explicit message listing allowed schemes.
+
+## Install and lock path policy
+
+Define this early and keep it consistent across implementation and tests.
+
+- Default install dir: `./.agents/skills`
+- Global install dir (`--global`): `~/.agents/skills`
+- Default lock path: `./.agents/.skill-lock.json`
+- Global lock path (`--global`): `~/.agents/.skill-lock.json`
+
+Use the same scope choice for both install destination and lock file. Do not mix project install with global lock (or vice versa).
+
 ## Add optional agent-specific install targets
 
 Use canonical install path as the source of truth:
@@ -96,13 +129,36 @@ Prefer symlink behavior with copy fallback (default behavior of installer).
 Expose these APIs when building a CLI:
 
 - `output_commands_json()` for `commands --output json`
-- `get_command_schema("install-skill")` for `schema --command install-skill --output json-schema`
+- `get_command_schema("install-skills")` for `schema --command install-skills --output json-schema`
 
 Keep the install command script-friendly:
 
 - Support `--yes` and `--non-interactive`
 - Avoid mandatory interactive prompts
 - Print deterministic output paths
+- Keep JSON output stable, for example:
+  - `schemaVersion`
+  - `type`
+  - `ok`
+  - `skills[]`
+
+When renaming commands, update all of these in one pass to avoid drift:
+
+- `src/main.rs`
+- `src/cli/introspection.rs`
+- integration tests that check `commands` and `schema` flows
+
+## Integration test checklist
+
+Use integration tests to validate real CLI behavior end-to-end, not only library helpers.
+
+- Routing works for `install-skills`
+- Help/usage text uses `install-skills`
+- `commands --output json` includes `install-skills`
+- `schema --command install-skills --output json-schema` works
+- Project mode writes under current project path (set `current_dir` explicitly in tests)
+- Global mode writes under home path
+- JSON output fields match schema exactly
 
 ## Validate implementation
 
@@ -119,3 +175,6 @@ cargo test
 - If no skills are discovered, confirm embedded skill data exists in the build.
 - If links fail on the host OS, rely on copy fallback and still update lock entries.
 - If command schema is missing fields, verify CLI argument definitions and introspection wiring.
+- If existing lock files fail to parse, support compatibility reads for both legacy map-style and newer array-style lock formats.
+- If replacing an existing symlink target fails with `remove_dir_all`, retry with `remove_file` fallback.
+- If project/global mode behaves unexpectedly in tests, ensure `current_dir` is explicitly set for project-scoped assertions.
