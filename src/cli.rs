@@ -59,7 +59,7 @@ pub fn get_commands() -> Vec<Command> {
             arguments: Some(vec![
                 Argument {
                     name: "agent".to_string(),
-                    description: "Target agent name for agent-specific installation".to_string(),
+                    description: "Target agent name(s) for agent-specific installation (can be comma-separated or specified multiple times, e.g., --agent claude,opencode or --agent claude --agent opencode)".to_string(),
                     arg_type: "string".to_string(),
                     required: false,
                     choices: None,
@@ -253,7 +253,7 @@ mod tests {
         // Verify descriptions
         assert_eq!(
             parsed["schema"]["properties"]["agent"]["description"],
-            "Target agent name for agent-specific installation"
+            "Target agent name(s) for agent-specific installation (can be comma-separated or specified multiple times, e.g., --agent claude,opencode or --agent claude --agent opencode)"
         );
         assert_eq!(
             parsed["schema"]["properties"]["skill"]["description"],
