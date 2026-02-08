@@ -3,6 +3,13 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Result of skill installation
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstallResult {
+    pub path: PathBuf,
+    pub symlink_failed: bool,
+}
+
 /// Installation mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallMode {
@@ -31,7 +38,7 @@ impl InstallConfig {
 }
 
 /// Install a skill to the canonical location and link/copy to target directories
-pub fn install_skill(skill: &Skill, config: &InstallConfig) -> Result<PathBuf> {
+pub fn install_skill(skill: &Skill, config: &InstallConfig) -> Result<InstallResult> {
     // Create canonical path
     let canonical_path = config.canonical_dir.join(&skill.name);
 
@@ -49,21 +56,29 @@ pub fn install_skill(skill: &Skill, config: &InstallConfig) -> Result<PathBuf> {
     fs::write(&skill_file_path, &skill.raw_content)
         .with_context(|| format!("Failed to write skill file: {:?}", skill_file_path))?;
 
+    // Track if any symlink failed
+    let mut any_symlink_failed = false;
+
     // Link or copy to target directories
     for target_dir in &config.target_dirs {
-        link_or_copy_skill(&canonical_path, target_dir, &skill.name, config)?;
+        let symlink_failed = link_or_copy_skill(&canonical_path, target_dir, &skill.name, config)?;
+        any_symlink_failed = any_symlink_failed || symlink_failed;
     }
 
-    Ok(canonical_path)
+    Ok(InstallResult {
+        path: canonical_path,
+        symlink_failed: any_symlink_failed,
+    })
 }
 
 /// Link or copy skill from canonical location to target directory
+/// Returns true if symlink failed and fallback to copy was used
 fn link_or_copy_skill(
     canonical_path: &Path,
     target_dir: &Path,
     skill_name: &str,
     config: &InstallConfig,
-) -> Result<()> {
+) -> Result<bool> {
     fs::create_dir_all(target_dir)
         .with_context(|| format!("Failed to create target directory: {:?}", target_dir))?;
 
@@ -87,18 +102,18 @@ fn link_or_copy_skill(
             let result = std::os::windows::fs::symlink_dir(canonical_path, &target_path);
 
             match result {
-                Ok(_) => Ok(()),
+                Ok(_) => Ok(false),
                 Err(e) if config.fallback_to_copy => {
                     // Fallback to copy
                     copy_skill(canonical_path, &target_path)?;
-                    Ok(())
+                    Ok(true)
                 }
                 Err(e) => Err(e).context("Failed to create symlink"),
             }
         }
         InstallMode::Copy => {
             copy_skill(canonical_path, &target_path)?;
-            Ok(())
+            Ok(false)
         }
     }
 }
@@ -149,10 +164,11 @@ mod tests {
 
         let result = install_skill(&skill, &config).unwrap();
 
-        assert_eq!(result, canonical_dir.join("test-skill"));
-        assert!(result.join("SKILL.md").exists());
+        assert_eq!(result.path, canonical_dir.join("test-skill"));
+        assert!(result.path.join("SKILL.md").exists());
+        assert!(!result.symlink_failed);
 
-        let content = fs::read_to_string(result.join("SKILL.md")).unwrap();
+        let content = fs::read_to_string(result.path.join("SKILL.md")).unwrap();
         assert_eq!(content, skill.raw_content);
     }
 
@@ -167,7 +183,7 @@ mod tests {
         config.mode = InstallMode::Symlink;
 
         let skill = create_test_skill();
-        install_skill(&skill, &config).unwrap();
+        let result = install_skill(&skill, &config).unwrap();
 
         let target_path = target_dir.join("test-skill");
         assert!(target_path.exists());
@@ -177,6 +193,7 @@ mod tests {
         {
             let metadata = fs::symlink_metadata(&target_path).unwrap();
             assert!(metadata.file_type().is_symlink());
+            assert!(!result.symlink_failed);
         }
     }
 
@@ -191,11 +208,12 @@ mod tests {
         config.mode = InstallMode::Copy;
 
         let skill = create_test_skill();
-        install_skill(&skill, &config).unwrap();
+        let result = install_skill(&skill, &config).unwrap();
 
         let target_path = target_dir.join("test-skill");
         assert!(target_path.exists());
         assert!(target_path.join("SKILL.md").exists());
+        assert!(!result.symlink_failed);
 
         let content = fs::read_to_string(target_path.join("SKILL.md")).unwrap();
         assert_eq!(content, skill.raw_content);
@@ -214,7 +232,8 @@ mod tests {
         // Install it
         let result = install_skill(&skill, &config).unwrap();
 
-        assert!(result.exists());
-        assert!(result.join("SKILL.md").exists());
+        assert!(result.path.exists());
+        assert!(result.path.join("SKILL.md").exists());
+        assert!(!result.symlink_failed);
     }
 }

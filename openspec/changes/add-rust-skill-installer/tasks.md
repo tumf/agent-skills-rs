@@ -37,3 +37,12 @@
 1. GitHub/GitLab 実通信を使ったE2E検証
    - 理由: 外部APIトークン・レート制限・CI環境差分に依存し、提案段階およびAI単独実行で再現性を担保しづらいため
    - 完了条件: 専用テスト環境で認証付き実通信E2Eを追加し、mockテストとの差分を監査可能にする
+
+## Acceptance #1 Failure Follow-up
+
+- [x] `discover_skills` が非埋め込みソースで常に空配列を返しており、優先探索ディレクトリ走査（`skills/`, `.agents/skills/`, `.claude/skills/` など）と `metadata.internal` フィルタ要件を満たしていないため、ファイルシステム探索と frontmatter 検証を実装する（根拠: `src/discovery.rs:27`）。
+- [x] `commands --output json` の `type` が `commands.list` ではなく `commands` になっているため、要件どおり `commands.list` を返すように修正し、テストを更新する（根拠: `src/cli.rs:131`、実行出力）。
+- [x] `schema --command install-skill --output json-schema` が `--agent` / `--skill` / `--global` など仕様上の引数を公開していないため、`install-skill` の引数定義と JSON Schema 出力を仕様に合わせて拡張する（根拠: `src/cli.rs:59`、実行出力）。
+- [x] ロック記録が常に `~/.agents/.skill-lock.json` に行われ、`global` のみ記録する要件とローカル非記録要件を満たせていないため、スコープ（global/local）を CLI とインストールフローに導入して条件分岐を実装する（根拠: `src/bin/my_command.rs:98`、`src/bin/my_command.rs:139`）。
+- [x] 埋め込みソースの `source_type` が `embedded`/`self` ではなく `self_` で記録されるため、ロック保存時の source type 正規化を実装する（根拠: `src/lock.rs:60`、`/tmp/skill-installer-accept-home/.agents/.skill-lock.json:6`）。
+- [x] symlink 失敗時 fallback は実装されているが `symlinkFailed = true` を返す結果モデルが存在せず要件シナリオを満たせないため、インストール結果型に `symlink_failed` を追加して返却・利用する（根拠: `src/installer.rs:34`、`src/installer.rs:91`）。

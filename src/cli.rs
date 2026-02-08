@@ -74,6 +74,28 @@ pub fn get_commands() -> Vec<Command> {
                     ]),
                 },
                 Argument {
+                    name: "agent".to_string(),
+                    description: "Target agent name for agent-specific installation".to_string(),
+                    arg_type: "string".to_string(),
+                    required: false,
+                    choices: None,
+                },
+                Argument {
+                    name: "skill".to_string(),
+                    description: "Specific skill name to install (if source contains multiple)"
+                        .to_string(),
+                    arg_type: "string".to_string(),
+                    required: false,
+                    choices: None,
+                },
+                Argument {
+                    name: "global".to_string(),
+                    description: "Install globally (default: true)".to_string(),
+                    arg_type: "boolean".to_string(),
+                    required: false,
+                    choices: None,
+                },
+                Argument {
                     name: "yes".to_string(),
                     description: "Skip confirmation prompts".to_string(),
                     arg_type: "boolean".to_string(),
@@ -128,7 +150,7 @@ pub fn get_commands() -> Vec<Command> {
 /// Output commands as JSON
 pub fn output_commands_json() -> Result<String> {
     let commands = get_commands();
-    let output = IntrospectionOutput::new("commands", json!({ "commands": commands }));
+    let output = IntrospectionOutput::new("commands.list", json!({ "commands": commands }));
     serde_json::to_string_pretty(&output).context("Failed to serialize commands")
 }
 
@@ -210,7 +232,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed["schemaVersion"], "1.0");
-        assert_eq!(parsed["type"], "commands");
+        assert_eq!(parsed["type"], "commands.list");
         assert_eq!(parsed["ok"], true);
         assert!(parsed["commands"].is_array());
     }
@@ -239,6 +261,30 @@ mod tests {
 
         assert!(parsed["schema"]["properties"]["yes"].is_object());
         assert!(parsed["schema"]["properties"]["non-interactive"].is_object());
+    }
+
+    #[test]
+    fn test_schema_includes_agent_skill_global() {
+        let schema = get_command_schema("install-skill").unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&schema).unwrap();
+
+        assert!(parsed["schema"]["properties"]["agent"].is_object());
+        assert!(parsed["schema"]["properties"]["skill"].is_object());
+        assert!(parsed["schema"]["properties"]["global"].is_object());
+
+        // Verify descriptions
+        assert_eq!(
+            parsed["schema"]["properties"]["agent"]["description"],
+            "Target agent name for agent-specific installation"
+        );
+        assert_eq!(
+            parsed["schema"]["properties"]["skill"]["description"],
+            "Specific skill name to install (if source contains multiple)"
+        );
+        assert_eq!(
+            parsed["schema"]["properties"]["global"]["description"],
+            "Install globally (default: true)"
+        );
     }
 
     #[test]

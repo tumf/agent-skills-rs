@@ -52,12 +52,23 @@ impl LockManager {
         let folder_hash = compute_skill_hash(skill_path)?;
         let now = chrono::Utc::now();
 
+        // Normalize source type for embedded/self
+        let normalized_source_type = if source.source_type.is_embedded() {
+            "self".to_string()
+        } else {
+            format!("{:?}", source.source_type).to_lowercase()
+        };
+
         let entry = lock
             .skills
             .entry(skill_name.to_string())
             .or_insert_with(|| LockEntry {
-                source: format!("{:?}", source.source_type),
-                source_type: format!("{:?}", source.source_type).to_lowercase(),
+                source: if source.source_type.is_embedded() {
+                    "Self".to_string()
+                } else {
+                    format!("{:?}", source.source_type)
+                },
+                source_type: normalized_source_type.clone(),
                 source_url: source.url.clone(),
                 skill_path: skill_path.to_string_lossy().to_string(),
                 skill_folder_hash: folder_hash.clone(),
@@ -66,6 +77,7 @@ impl LockManager {
             });
 
         // Update entry
+        entry.source_type = normalized_source_type;
         entry.skill_folder_hash = folder_hash;
         entry.updated_at = now;
         entry.skill_path = skill_path.to_string_lossy().to_string();
@@ -175,7 +187,7 @@ mod tests {
             .unwrap();
 
         let entry = manager.get_entry("test-skill").unwrap().unwrap();
-        assert_eq!(entry.source_type, "self_");
+        assert_eq!(entry.source_type, "self");
         assert!(!entry.skill_folder_hash.is_empty());
     }
 
@@ -223,7 +235,7 @@ mod tests {
             .unwrap();
 
         let entry = manager.get_entry("embedded-skill").unwrap().unwrap();
-        assert_eq!(entry.source_type, "self_");
+        assert_eq!(entry.source_type, "self");
         assert!(entry.source_url.is_none());
         assert!(!entry.skill_folder_hash.is_empty());
     }

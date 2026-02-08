@@ -8,7 +8,7 @@ pub mod types;
 pub use cli::{get_command_schema, get_commands, output_commands_json};
 pub use discovery::{discover_skills, DiscoveryConfig};
 pub use embedded::get_embedded_skill;
-pub use installer::{install_skill, InstallConfig, InstallMode};
+pub use installer::{install_skill, InstallConfig, InstallMode, InstallResult};
 pub use lock::LockManager;
 pub use types::{Skill, SkillLock, Source, SourceType};
 
@@ -41,21 +41,21 @@ mod integration_tests {
 
         // Install skill
         let install_config = InstallConfig::new(canonical_dir.clone());
-        let installed_path = install_skill(skill, &install_config).unwrap();
+        let result = install_skill(skill, &install_config).unwrap();
 
         // Verify installation
-        assert!(installed_path.exists());
-        assert!(installed_path.join("SKILL.md").exists());
+        assert!(result.path.exists());
+        assert!(result.path.join("SKILL.md").exists());
 
         // Update lock
         let lock_manager = LockManager::new(lock_path);
         lock_manager
-            .update_entry(&skill.name, &source, &installed_path)
+            .update_entry(&skill.name, &source, &result.path)
             .unwrap();
 
         // Verify lock entry
         let entry = lock_manager.get_entry(&skill.name).unwrap().unwrap();
-        assert_eq!(entry.source_type, "self_");
+        assert_eq!(entry.source_type, "self");
         assert!(!entry.skill_folder_hash.is_empty());
     }
 
@@ -98,14 +98,14 @@ mod integration_tests {
         let skills = discover_skills(&source, &config).unwrap();
 
         let install_config = InstallConfig::new(canonical_dir.clone());
-        let installed_path = install_skill(&skills[0], &install_config).unwrap();
+        let result = install_skill(&skills[0], &install_config).unwrap();
 
         let lock_manager = LockManager::new(lock_path);
         lock_manager
-            .update_entry(&skills[0].name, &source, &installed_path)
+            .update_entry(&skills[0].name, &source, &result.path)
             .unwrap();
 
         // All operations should succeed without network access
-        assert!(installed_path.exists());
+        assert!(result.path.exists());
     }
 }

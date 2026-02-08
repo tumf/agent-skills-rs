@@ -12,6 +12,7 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+#[allow(clippy::enum_variant_names)]
 enum Commands {
     /// List all available commands with JSON output
     Commands {
@@ -29,6 +30,15 @@ enum Commands {
     InstallSkill {
         /// Source type or identifier (github, gitlab, local, direct, self, embedded)
         source: String,
+        /// Target agent name for agent-specific installation
+        #[arg(long)]
+        agent: Option<String>,
+        /// Specific skill name to install
+        #[arg(long)]
+        skill: Option<String>,
+        /// Install globally (default: true)
+        #[arg(long)]
+        global: Option<bool>,
         /// Skip confirmation prompts
         #[arg(long)]
         yes: bool,
@@ -63,17 +73,32 @@ fn main() -> Result<()> {
         }
         Commands::InstallSkill {
             source,
+            agent,
+            skill,
+            global,
             yes,
             non_interactive,
         } => {
-            install_skill_command(&source, yes || non_interactive)?;
+            install_skill_command(
+                &source,
+                agent.as_deref(),
+                skill.as_deref(),
+                global.unwrap_or(true),
+                yes || non_interactive,
+            )?;
         }
     }
 
     Ok(())
 }
 
-fn install_skill_command(source_str: &str, auto_confirm: bool) -> Result<()> {
+fn install_skill_command(
+    source_str: &str,
+    _agent: Option<&str>,
+    skill_filter: Option<&str>,
+    is_global: bool,
+    auto_confirm: bool,
+) -> Result<()> {
     // Determine source type
     let source_type = match source_str.to_lowercase().as_str() {
         "self" | "embedded" => SourceType::Self_,
@@ -90,24 +115,37 @@ fn install_skill_command(source_str: &str, auto_confirm: bool) -> Result<()> {
         source_type,
         url: None,
         subpath: None,
-        skill_filter: None,
+        skill_filter: skill_filter.map(|s| s.to_string()),
         ref_: None,
     };
 
     // Setup paths
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let canonical_dir = PathBuf::from(&home).join(".agents/skills");
-    let lock_path = PathBuf::from(&home).join(".agents/.skill-lock.json");
+    let lock_path = if is_global {
+        Some(PathBuf::from(&home).join(".agents/.skill-lock.json"))
+    } else {
+        None
+    };
 
     println!("Discovering skills from source: {}", source_str);
 
     // Discover skills
     let config = DiscoveryConfig::default();
-    let skills = discover_skills(&source, &config)?;
+    let mut skills = discover_skills(&source, &config)?;
 
     if skills.is_empty() {
         println!("No skills found.");
         return Ok(());
+    }
+
+    // Filter by skill name if specified
+    if let Some(filter) = skill_filter {
+        skills.retain(|s| s.name == filter);
+        if skills.is_empty() {
+            println!("No skill matching '{}' found.", filter);
+            return Ok(());
+        }
     }
 
     println!("Found {} skill(s):", skills.len());
@@ -130,15 +168,21 @@ fn install_skill_command(source_str: &str, auto_confirm: bool) -> Result<()> {
         println!("Installing skill '{}'...", skill.name);
 
         let install_config = InstallConfig::new(canonical_dir.clone());
-        let installed_path = install_skill(skill, &install_config)?;
+        let result = install_skill(skill, &install_config)?;
 
-        println!("  Installed to: {}", installed_path.display());
+        println!("  Installed to: {}", result.path.display());
+        if result.symlink_failed {
+            println!("  Note: Symlink failed, used copy instead.");
+        }
 
-        // Update lock file
-        let lock_manager = LockManager::new(lock_path.clone());
-        lock_manager.update_entry(&skill.name, &source, &installed_path)?;
-
-        println!("  Lock file updated.");
+        // Update lock file only for global installations
+        if let Some(ref lock_path) = lock_path {
+            let lock_manager = LockManager::new(lock_path.clone());
+            lock_manager.update_entry(&skill.name, &source, &result.path)?;
+            println!("  Lock file updated.");
+        } else {
+            println!("  Local installation (no lock file update).");
+        }
     }
 
     println!("\nInstallation complete!");
