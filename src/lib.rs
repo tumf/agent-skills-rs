@@ -204,4 +204,63 @@ This is a test skill.
 
         // This test should complete without any external network calls
     }
+
+    #[test]
+    fn test_github_cli_integration() {
+        // Test that the CLI flow works end-to-end for GitHub source
+        use types::SkillMetadata;
+
+        let temp_dir = TempDir::new().unwrap();
+
+        // Simulate the CLI flow
+        let source = Source {
+            source_type: SourceType::Github,
+            url: Some("https://github.com/mock/skills".to_string()),
+            subpath: None,
+            skill_filter: None,
+            ref_: None,
+        };
+
+        let mock_skill = Skill {
+            name: "cli-github-skill".to_string(),
+            description: "CLI GitHub skill".to_string(),
+            path: None,
+            raw_content: r#"---
+name: cli-github-skill
+description: CLI GitHub skill
+---
+
+# CLI GitHub Skill
+"#
+            .to_string(),
+            metadata: SkillMetadata::default(),
+        };
+
+        let provider = MockProvider::new(vec![mock_skill]).with_hash("cli-mock-hash".to_string());
+
+        // Discovery
+        let config = DiscoveryConfig::default();
+        let skills = discover_skills_with_provider(&source, &config, Some(&provider)).unwrap();
+        assert_eq!(skills.len(), 1);
+
+        // Installation
+        let canonical_dir = temp_dir.path().join(".agents/skills");
+        let install_config = InstallConfig::new(canonical_dir);
+        let result =
+            install_skill_with_provider(&skills[0], &install_config, Some(&provider)).unwrap();
+
+        // Lock update (global)
+        let lock_path = temp_dir.path().join(".agents/.skill-lock.json");
+        let lock_manager = LockManager::new(lock_path.clone());
+        let hash = provider.get_folder_hash(&skills[0]).unwrap();
+        lock_manager
+            .update_entry_with_hash(&skills[0].name, &source, &result.path, hash)
+            .unwrap();
+
+        // Verify
+        let entry = lock_manager.get_entry(&skills[0].name).unwrap().unwrap();
+        assert_eq!(entry.source_type, "github");
+        assert_eq!(entry.skill_folder_hash, "cli-mock-hash");
+        assert!(entry.source_url.is_some());
+    }
 }
