@@ -34,18 +34,26 @@ When `install` is executed in an environment where `symlink` is not permitted, t
 When running `my-command install-skill --yes`, embedded skills are placed in `.agents/skills/<skill-name>` and subsequent agent-specific distribution follows the same symlink/copy rules as regular sources.
 
 ### Requirement: Lock File Update
-`install` MUST record `source`, `sourceType`, `sourceUrl`, and `skillFolderHash` in the scope-appropriate lock file upon successful installation.
-- project-local scope: `./.agents/.skill-lock.json`
-- global scope: `~/.agents/.skill-lock.json`
+`install` MUST accept both legacy format (where `skills` is an array) and new format (where `skills` is a map) when reading the lock file. When legacy format is detected, `install` MUST automatically convert it to the new format during load.
 
-#### Scenario: Lock update in project-local scope
-When running `my-command install-skill --yes` (without `--global`), the lock file is recorded in `./.agents/.skill-lock.json`.
+#### Scenario: Automatic migration from legacy lock file format
+Given `~/.agents/.skill-lock.json` exists with the following content:
+```json
+{
+  "skills": [
+    {"name": "skill-a", "path": "/path/to/a", "source_type": "github"},
+    {"name": "skill-b", "path": "", "source_type": "github"}
+  ]
+}
+```
+When `install` loads the lock file.
+Then `skill-a` is imported as a new format entry, and `skill-b` is excluded because its `path` is empty.
+And the lock file is treated as new format (with `version` and `skills` map).
 
-#### Scenario: Lock update in global scope
-When running `my-command install-skill --global --yes`, the lock file is recorded in `~/.agents/.skill-lock.json`.
-
-#### Scenario: Lock update for embedded skills
-When installing embedded skills, the lock file records `sourceType` as `self` and `skillFolderHash` is stored as a deterministic value computed without using external APIs.
+#### Scenario: Backward compatibility with new format lock file
+Given a lock file where `skills` is stored in map format.
+When `install` loads the lock file.
+Then it succeeds as usual without any behavioral change.
 
 ### Requirement: Multiple Agent Specification
 The `--agent` option for `install-skill` MUST accept multiple platforms via comma-separated values or multiple occurrences, resolve installation targets while preserving order and removing duplicates.
