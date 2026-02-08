@@ -1,33 +1,39 @@
 # 作業タスク
 
-1. ライブラリのコア型とエージェント設定の雛形を追加する
-   - 成果物: `types` と `agents` モジュール（Skill/Agent/Source/LockEntry）
-   - 検証: `cargo check` が通る、または対象ファイルに型定義が存在する
+1. コア型を拡張し、埋め込みソース種別を正式化する
+   - 成果物: `Source.type` に `self` / `embedded` を追加し、同義として扱う仕様を反映
+   - 検証方法: 型定義とCLI入力定義に `self` と `embedded` の両方が存在することを静的確認する
 
-2. スキル発見ロジックを実装する（探索ディレクトリ + SKILL.md パース）
-   - 成果物: `discovery` モジュール、frontmatter パース、internal スキルのフィルタ
-   - 検証: ユニットテストで `skills/` と `.agents/skills/` を優先検索し、`metadata.internal` が除外される
+2. 埋め込みスキル定義モジュールを追加する（`include_str!` 相当）
+   - 成果物: コンパイル時に `SKILL.md` 等を読み込む `embedded` モジュール（実コンテンツをバイナリに同梱）
+   - 検証方法: ユニットテストで埋め込み定義が空でないこと、必須frontmatter（`name`, `description`）を満たすことを確認する
 
-3. インストールロジックを実装する（canonical + symlink/copy）
-   - 成果物: `installer` モジュール、path traversal 対策、symlink フォールバック
-   - 検証: テンポラリディレクトリを使うテストで `symlink` と `copy` の両方が動作する
+3. discovery に self/embedded 分岐を追加する
+   - 成果物: `install-skill self|embedded` 指定時に、ファイルシステム探索ではなく埋め込み定義を返す経路
+   - 検証方法: ユニットテストで `self` 指定時に外部provider呼び出しが0回であることを検証する
 
-4. ロックファイル管理を実装する（globalのみ記録）
-   - 成果物: `.skill-lock.json` の read/write と version 管理
-   - 検証: ロックファイル更新時に `skill_folder_hash` が保存される
+4. installer の canonical/symlink/copy 流れへ埋め込み経路を統合する
+   - 成果物: 埋め込み由来でも通常ソースと同一の後段処理（canonical配置、symlink失敗時copyフォールバック）を実行
+   - 検証方法: テンポラリディレクトリ統合テストで `install-skill self --yes` が成功し、配置結果が期待通りであることを確認する
 
-5. 外部依存の抽象化とモック実装を追加する
-   - 成果物: `providers` トレイト（clone/fetch/hash）、モック実装
-   - 検証: モックのみで discovery → install → lock の一連テストが通る
+5. lock 管理に埋め込みソースの記録ルールを追加する
+   - 成果物: global インストール時に `sourceType=embedded`（または self同義）と決定的ハッシュを保存
+   - 検証方法: ロックファイル検証テストで `skill_folder_hash` が保存され、外部通信不要で再現可能であることを確認する
 
-6. CLIの `install-skill` を実装しライブラリに接続する
-   - 成果物: `my-command install-skill` の実行経路
-   - 検証: `--yes` で非対話実行でき、`--agent`/`--skill` で絞り込み可能
+6. CLI 経路を拡張し `my-command install-skill self` / `embedded` をサポートする
+   - 成果物: `install-skill` の引数解決ロジックと非対話実行（`--yes` / `--non-interactive`）
+   - 検証方法: CLIテストで `my-command install-skill self --yes` と `my-command install-skill embedded --yes` が等価に成功することを確認する
 
-7. Introspection コマンドを実装する
-   - 成果物: `my-command commands --output json` / `schema --command install-skill --output json-schema`
-   - 検証: JSON出力が `schemaVersion`, `type`, `ok` を含む
+7. Introspection 出力を更新し schema に self/embedded を反映する
+   - 成果物: `commands --output json` / `schema --command install-skill --output json-schema` の更新
+   - 検証方法: JSON Schema 検証で source 列挙値に `self` と `embedded` が含まれることを確認する
 
-8. 最小限の統合テストを追加する（外部API無し）
-   - 成果物: モックprovider + temp dir による end-to-end テスト
-   - 検証: `cargo test` が通る
+8. mock-first 方針で end-to-end テストを整備する（外部通信なし）
+   - 成果物: モックprovider + temp dir による discovery → install → lock の一連テスト
+   - 検証方法: テスト実行時にネットワークアクセスなしで `cargo test` が通ることを確認する
+
+## Future work
+
+1. GitHub/GitLab 実通信を使ったE2E検証
+   - 理由: 外部APIトークン・レート制限・CI環境差分に依存し、提案段階およびAI単独実行で再現性を担保しづらいため
+   - 完了条件: 専用テスト環境で認証付き実通信E2Eを追加し、mockテストとの差分を監査可能にする
