@@ -2,7 +2,6 @@
 
 ## Purpose
 Provides machine-readable introspection capabilities for CLI commands, enabling agents and automation tools to discover available commands and their schemas programmatically.
-
 ## Requirements
 ### Requirement: JSON Output for Command List
 CLI MUST provide `commands --output json` and return JSON with `schemaVersion`, `type`, and `ok` at the top level.
@@ -15,3 +14,10 @@ CLI MUST provide `schema --command install-skill --output json-schema` and retur
 
 #### Scenario: Retrieving install-skill schema
 When running `my-command schema --command install-skill --output json-schema`, a JSON Schema defining the arguments for `install-skill` (`--agent`, `--skill`, `--yes`, `--global`, etc.) is output to stdout. The default value for `--global` is `false` (project-local).
+
+### Requirement: Agent Description in install-skill Schema
+The `agent` argument description in `schema --command install-skill --output json-schema` MUST explicitly indicate that comma-separated values and multiple occurrences are allowed.
+
+#### Scenario: Updated agent description
+When running `my-command schema --command install-skill --output json-schema`, the `agent` description includes text indicating "comma-separated" and "repeatable" behavior.
+
