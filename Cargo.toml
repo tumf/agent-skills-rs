@@ -1,7 +1,12 @@
 [package]
-name = "skill_installer"
+name = "agent-skills-rs"
 version = "0.1.0"
 edition = "2021"
+description = "Library and CLI for installing agent skills"
+license = "MIT"
+repository = "https://github.com/tumf/agent-skills-rs"
+homepage = "https://github.com/tumf/agent-skills-rs"
+documentation = "https://docs.rs/agent-skills-rs"
 
 [[bin]]
 name = "my-command"

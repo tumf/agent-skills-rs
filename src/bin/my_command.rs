@@ -1,6 +1,6 @@
+use agent_skills_rs::*;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use skill_installer::*;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -237,7 +237,7 @@ fn install_skill_command(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use skill_installer::types::SkillMetadata;
+    use agent_skills_rs::types::SkillMetadata;
 
     #[test]
     fn test_parse_agents_single() {
