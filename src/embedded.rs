@@ -1,7 +1,7 @@
 use crate::types::{Skill, SkillMetadata};
 use anyhow::{Context, Result};
 
-const AGENT_SKILLS_RUST_CONTENT: &str = include_str!("../.agents/skills/agent-skills-rs/SKILL.md");
+const AGENT_SKILLS_RUST_CONTENT: &str = include_str!("../skills/agent-skills-rs/SKILL.md");
 
 /// Parse frontmatter from markdown content
 fn parse_frontmatter(content: &str) -> Result<(SkillMetadata, String, String)> {
