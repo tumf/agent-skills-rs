@@ -26,8 +26,8 @@ enum Commands {
         #[arg(long, value_name = "FORMAT")]
         output: Option<String>,
     },
-    /// Install a skill
-    InstallSkill {
+    /// Install skills
+    InstallSkills {
         /// Target agent name(s) for agent-specific installation (can be comma-separated or specified multiple times)
         #[arg(long)]
         agent: Vec<String>,
@@ -58,7 +58,7 @@ fn main() -> Result<()> {
                 println!("Available commands:");
                 println!("  commands --output json");
                 println!("  schema --command <name> --output json-schema");
-                println!("  install-skill [--global] [--yes] [--non-interactive]");
+                println!("  install-skills [--global] [--yes] [--non-interactive]");
             }
         }
         Commands::Schema { command, output } => {
@@ -69,7 +69,7 @@ fn main() -> Result<()> {
                 println!("Use --output json-schema to get the schema");
             }
         }
-        Commands::InstallSkill {
+        Commands::InstallSkills {
             agent,
             skill,
             global,

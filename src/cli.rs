@@ -53,7 +53,7 @@ impl IntrospectionOutput {
 pub fn get_commands() -> Vec<Command> {
     vec![
         Command {
-            name: "install-skill".to_string(),
+            name: "install-skills".to_string(),
             description: "Install embedded skill(s) bundled in the binary".to_string(),
             subcommands: None,
             arguments: Some(vec![
@@ -188,14 +188,17 @@ mod tests {
         let commands = get_commands();
         assert!(!commands.is_empty());
 
-        let install_cmd = commands.iter().find(|c| c.name == "install-skill");
+        let install_cmd = commands.iter().find(|c| c.name == "install-skills");
         assert!(install_cmd.is_some());
     }
 
     #[test]
     fn test_install_skill_command_has_no_source_argument() {
         let commands = get_commands();
-        let install_cmd = commands.iter().find(|c| c.name == "install-skill").unwrap();
+        let install_cmd = commands
+            .iter()
+            .find(|c| c.name == "install-skills")
+            .unwrap();
 
         let source_arg = install_cmd
             .arguments
@@ -220,7 +223,7 @@ mod tests {
 
     #[test]
     fn test_get_command_schema() {
-        let schema = get_command_schema("install-skill").unwrap();
+        let schema = get_command_schema("install-skills").unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&schema).unwrap();
 
         assert_eq!(parsed["schemaVersion"], "1.0");
@@ -234,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_schema_includes_yes_and_non_interactive() {
-        let schema = get_command_schema("install-skill").unwrap();
+        let schema = get_command_schema("install-skills").unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&schema).unwrap();
 
         assert!(parsed["schema"]["properties"]["yes"].is_object());
@@ -243,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_schema_includes_agent_skill_global() {
-        let schema = get_command_schema("install-skill").unwrap();
+        let schema = get_command_schema("install-skills").unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&schema).unwrap();
 
         assert!(parsed["schema"]["properties"]["agent"].is_object());
