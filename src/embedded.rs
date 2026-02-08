@@ -1,14 +1,7 @@
 use crate::types::{Skill, SkillMetadata};
 use anyhow::{Context, Result};
 
-/// Embedded skill content bundled at compile time
-const EMBEDDED_SKILL_CONTENT: &str = include_str!("../skills/SKILL.md");
-
-/// Skill installer content (legacy single skill location)
-const SKILL_INSTALLER_CONTENT: &str = include_str!("../skills/SKILL.md");
-
-/// Agent skills Rust integration guide
-const AGENT_SKILLS_RUST_CONTENT: &str = include_str!("../skills/agent-skills-rust/SKILL.md");
+const AGENT_SKILLS_RUST_CONTENT: &str = include_str!("../.agents/skills/agent-skills-rs/SKILL.md");
 
 /// Parse frontmatter from markdown content
 fn parse_frontmatter(content: &str) -> Result<(SkillMetadata, String, String)> {
@@ -50,13 +43,13 @@ fn parse_frontmatter(content: &str) -> Result<(SkillMetadata, String, String)> {
 
 /// Get the embedded skill definition
 pub fn get_embedded_skill() -> Result<Skill> {
-    let (metadata, name, description) = parse_frontmatter(EMBEDDED_SKILL_CONTENT)?;
+    let (metadata, name, description) = parse_frontmatter(AGENT_SKILLS_RUST_CONTENT)?;
 
     Ok(Skill {
         name,
         description,
         path: None,
-        raw_content: EMBEDDED_SKILL_CONTENT.to_string(),
+        raw_content: AGENT_SKILLS_RUST_CONTENT.to_string(),
         metadata,
     })
 }
@@ -65,24 +58,14 @@ pub fn get_embedded_skill() -> Result<Skill> {
 pub fn get_embedded_skills() -> Result<Vec<Skill>> {
     let mut skills = Vec::new();
 
-    // Parse skill-installer
-    let (metadata1, name1, description1) = parse_frontmatter(SKILL_INSTALLER_CONTENT)?;
+    // Parse agent-skills-rs
+    let (metadata, name, description) = parse_frontmatter(AGENT_SKILLS_RUST_CONTENT)?;
     skills.push(Skill {
-        name: name1,
-        description: description1,
-        path: None,
-        raw_content: SKILL_INSTALLER_CONTENT.to_string(),
-        metadata: metadata1,
-    });
-
-    // Parse agent-skills-rust
-    let (metadata2, name2, description2) = parse_frontmatter(AGENT_SKILLS_RUST_CONTENT)?;
-    skills.push(Skill {
-        name: name2,
-        description: description2,
+        name,
+        description,
         path: None,
         raw_content: AGENT_SKILLS_RUST_CONTENT.to_string(),
-        metadata: metadata2,
+        metadata,
     });
 
     Ok(skills)
@@ -94,8 +77,8 @@ mod tests {
 
     #[test]
     fn test_embedded_skill_not_empty() {
-        assert!(!EMBEDDED_SKILL_CONTENT.is_empty());
-        assert!(EMBEDDED_SKILL_CONTENT.contains("---"));
+        assert!(!AGENT_SKILLS_RUST_CONTENT.is_empty());
+        assert!(AGENT_SKILLS_RUST_CONTENT.contains("---"));
     }
 
     #[test]
@@ -111,9 +94,9 @@ mod tests {
     #[test]
     fn test_embedded_skill_content() {
         let skill = get_embedded_skill().unwrap();
-        assert_eq!(skill.name, "skill-installer");
+        assert_eq!(skill.name, "agent-skills-rs");
         assert!(skill.description.contains("Rust library"));
-        assert_eq!(skill.raw_content, EMBEDDED_SKILL_CONTENT);
+        assert_eq!(skill.raw_content, AGENT_SKILLS_RUST_CONTENT);
     }
 
     #[test]

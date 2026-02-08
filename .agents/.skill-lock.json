@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "skills": {
+    "agent-skills-rust": {
+      "source": "Self",
+      "sourceType": "self",
+      "skillPath": "/Users/tumf/src/tries/2026-02-08-agent-skills-rust/.agents/skills/agent-skills-rust",
+      "skillFolderHash": "7ed9be2d0ad80df08b530e510407b6d247f0d076b1824d03af92c9f45197a9b4",
+      "installedAt": "2026-02-08T14:50:13.723457Z",
+      "updatedAt": "2026-02-08T14:50:13.723457Z"
+    }
+  }
+}

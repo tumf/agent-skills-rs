@@ -239,9 +239,8 @@ mod tests {
         };
 
         let skills = discover_skills(&source, &config).unwrap();
-        assert_eq!(skills.len(), 2);
-        assert_eq!(skills[0].name, "skill-installer");
-        assert_eq!(skills[1].name, "agent-skills-rust");
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "agent-skills-rs");
     }
 
     #[test]
@@ -256,9 +255,8 @@ mod tests {
         };
 
         let skills = discover_skills(&source, &config).unwrap();
-        assert_eq!(skills.len(), 2);
-        assert_eq!(skills[0].name, "skill-installer");
-        assert_eq!(skills[1].name, "agent-skills-rust");
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "agent-skills-rs");
     }
 
     #[test]

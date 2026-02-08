@@ -1,5 +1,5 @@
 ---
-name: agent-skills-rust
+name: agent-skills-rs
 description: Guide for integrating the agent-skills-rs Rust library and optional CLI workflow into a project. Use when adding embedded skill discovery/installation, lock-file updates, agent-specific install paths, or command introspection support in Rust codebases.
 ---
 
@@ -30,7 +30,7 @@ If local development is required, use a path dependency instead:
 
 ```toml
 [dependencies]
-agent-skills-rs = { path = "../agent-skills-rust" }
+agent-skills-rs = { path = "../agent-skills-rs" }
 ```
 
 ## Implement the core install flow
