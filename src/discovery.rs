@@ -1,4 +1,5 @@
 use crate::embedded;
+use crate::providers::SkillProvider;
 use crate::types::{Skill, SkillMetadata, Source};
 use anyhow::{Context, Result};
 use serde_yaml::Value as YamlValue;
@@ -30,6 +31,15 @@ impl Default for DiscoveryConfig {
 
 /// Discover skills based on source specification
 pub fn discover_skills(source: &Source, config: &DiscoveryConfig) -> Result<Vec<Skill>> {
+    discover_skills_with_provider(source, config, None)
+}
+
+/// Discover skills with an optional provider (for testing and external sources)
+pub fn discover_skills_with_provider(
+    source: &Source,
+    config: &DiscoveryConfig,
+    provider: Option<&dyn SkillProvider>,
+) -> Result<Vec<Skill>> {
     // Handle embedded sources
     if source.source_type.is_embedded() {
         return discover_embedded_skills(config);
@@ -45,8 +55,24 @@ pub fn discover_skills(source: &Source, config: &DiscoveryConfig) -> Result<Vec<
         return discover_local_skills(&base_path, config);
     }
 
-    // For other source types (github, gitlab, direct), this would implement provider-based discovery
-    // For now, return empty as the mock-first approach will handle this via providers
+    // For other source types (github, gitlab, direct), use provider if available
+    if let Some(provider) = provider {
+        let url = source
+            .url
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("URL required for provider-based discovery"))?;
+        let skills = provider.discover_skills(url, source.subpath.as_deref())?;
+
+        // Apply internal filter
+        let filtered: Vec<Skill> = skills
+            .into_iter()
+            .filter(|s| config.allow_internal || !s.metadata.internal)
+            .collect();
+
+        return Ok(filtered);
+    }
+
+    // Without a provider, we can't fetch external sources
     Ok(Vec::new())
 }
 
@@ -131,9 +157,21 @@ fn parse_skill_file(path: &Path, config: &DiscoveryConfig) -> Result<Skill> {
 
     // Extract metadata
     let mut metadata = SkillMetadata::default();
-    if let Some(internal) = frontmatter.get("internal").and_then(|v| v.as_bool()) {
-        metadata.internal = internal;
-    }
+
+    // Check both top-level 'internal' and 'metadata.internal' for compatibility
+    let internal_flag = frontmatter
+        .get("internal")
+        .and_then(|v| v.as_bool())
+        .or_else(|| {
+            frontmatter
+                .get("metadata")
+                .and_then(|m| m.as_mapping())
+                .and_then(|m| m.get(YamlValue::String("internal".to_string())))
+                .and_then(|v| v.as_bool())
+        })
+        .unwrap_or(false);
+
+    metadata.internal = internal_flag;
 
     // Filter internal skills if not allowed
     if metadata.internal && !config.allow_internal {
@@ -378,5 +416,139 @@ name: test-skill
             .unwrap_err()
             .to_string()
             .contains("Missing 'description'"));
+    }
+
+    #[test]
+    fn test_metadata_internal_nested_field() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        // Test metadata.internal: true format (nested)
+        let nested_internal_skill = r#"---
+name: nested-internal-skill
+description: Internal skill with nested metadata
+metadata:
+  internal: true
+---
+
+# Nested Internal Skill
+"#;
+        fs::write(skills_dir.join("SKILL.md"), nested_internal_skill).unwrap();
+
+        let config = DiscoveryConfig {
+            allow_internal: false,
+            max_depth: 3,
+        };
+
+        // Should filter out when internal is nested under metadata
+        let skills = discover_local_skills(temp_dir.path(), &config).unwrap();
+        assert_eq!(skills.len(), 0);
+
+        // Should allow when config permits
+        let config_allow = DiscoveryConfig {
+            allow_internal: true,
+            max_depth: 3,
+        };
+        let skills_allowed = discover_local_skills(temp_dir.path(), &config_allow).unwrap();
+        assert_eq!(skills_allowed.len(), 1);
+        assert!(skills_allowed[0].metadata.internal);
+    }
+
+    #[test]
+    fn test_discover_github_with_mock_provider() {
+        use crate::providers::MockProvider;
+        use crate::types::SkillMetadata;
+
+        let skill = Skill {
+            name: "github-skill".to_string(),
+            description: "A skill from GitHub".to_string(),
+            path: None,
+            raw_content: r#"---
+name: github-skill
+description: A skill from GitHub
+---
+
+# GitHub Skill
+"#
+            .to_string(),
+            metadata: SkillMetadata::default(),
+        };
+
+        let provider = MockProvider::new(vec![skill]);
+        let source = Source {
+            source_type: SourceType::Github,
+            url: Some("https://github.com/example/repo".to_string()),
+            subpath: None,
+            skill_filter: None,
+            ref_: None,
+        };
+
+        let config = DiscoveryConfig::default();
+        let skills = discover_skills_with_provider(&source, &config, Some(&provider)).unwrap();
+
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "github-skill");
+    }
+
+    #[test]
+    fn test_discover_github_filters_internal() {
+        use crate::providers::MockProvider;
+        use crate::types::SkillMetadata;
+
+        let internal_skill = Skill {
+            name: "internal-github-skill".to_string(),
+            description: "Internal GitHub skill".to_string(),
+            path: None,
+            raw_content: "test".to_string(),
+            metadata: SkillMetadata {
+                internal: true,
+                extra: Default::default(),
+            },
+        };
+
+        let public_skill = Skill {
+            name: "public-github-skill".to_string(),
+            description: "Public GitHub skill".to_string(),
+            path: None,
+            raw_content: "test".to_string(),
+            metadata: SkillMetadata::default(),
+        };
+
+        let provider = MockProvider::new(vec![internal_skill, public_skill]);
+        let source = Source {
+            source_type: SourceType::Github,
+            url: Some("https://github.com/example/repo".to_string()),
+            subpath: None,
+            skill_filter: None,
+            ref_: None,
+        };
+
+        let config = DiscoveryConfig {
+            allow_internal: false,
+            max_depth: 3,
+        };
+        let skills = discover_skills_with_provider(&source, &config, Some(&provider)).unwrap();
+
+        // Should only return the public skill
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "public-github-skill");
+    }
+
+    #[test]
+    fn test_discover_github_without_provider() {
+        let source = Source {
+            source_type: SourceType::Github,
+            url: Some("https://github.com/example/repo".to_string()),
+            subpath: None,
+            skill_filter: None,
+            ref_: None,
+        };
+
+        let config = DiscoveryConfig::default();
+        let skills = discover_skills(&source, &config).unwrap();
+
+        // Without provider, should return empty
+        assert_eq!(skills.len(), 0);
     }
 }

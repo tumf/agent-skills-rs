@@ -60,12 +60,17 @@ pub struct Source {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LockEntry {
     pub source: String,
+    #[serde(rename = "sourceType")]
     pub source_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "sourceUrl", skip_serializing_if = "Option::is_none")]
     pub source_url: Option<String>,
+    #[serde(rename = "skillPath")]
     pub skill_path: String,
+    #[serde(rename = "skillFolderHash")]
     pub skill_folder_hash: String,
+    #[serde(rename = "installedAt")]
     pub installed_at: chrono::DateTime<chrono::Utc>,
+    #[serde(rename = "updatedAt")]
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 

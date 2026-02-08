@@ -1,3 +1,4 @@
+use crate::providers::SkillProvider;
 use crate::types::Skill;
 use anyhow::{Context, Result};
 use std::fs;
@@ -39,6 +40,15 @@ impl InstallConfig {
 
 /// Install a skill to the canonical location and link/copy to target directories
 pub fn install_skill(skill: &Skill, config: &InstallConfig) -> Result<InstallResult> {
+    install_skill_with_provider(skill, config, None)
+}
+
+/// Install a skill with an optional provider (for external sources)
+pub fn install_skill_with_provider(
+    skill: &Skill,
+    config: &InstallConfig,
+    provider: Option<&dyn SkillProvider>,
+) -> Result<InstallResult> {
     // Create canonical path
     let canonical_path = config.canonical_dir.join(&skill.name);
 
@@ -48,13 +58,21 @@ pub fn install_skill(skill: &Skill, config: &InstallConfig) -> Result<InstallRes
             .with_context(|| format!("Failed to create canonical directory: {:?}", parent))?;
     }
 
-    // Write skill content to canonical location
-    fs::create_dir_all(&canonical_path)
-        .with_context(|| format!("Failed to create skill directory: {:?}", canonical_path))?;
+    // Fetch content to canonical location
+    if let Some(provider) = provider {
+        // Use provider to fetch skill content
+        provider
+            .fetch_skill(skill, &canonical_path)
+            .with_context(|| format!("Failed to fetch skill via provider: {:?}", skill.name))?;
+    } else {
+        // Write skill content directly (for embedded/local skills)
+        fs::create_dir_all(&canonical_path)
+            .with_context(|| format!("Failed to create skill directory: {:?}", canonical_path))?;
 
-    let skill_file_path = canonical_path.join("SKILL.md");
-    fs::write(&skill_file_path, &skill.raw_content)
-        .with_context(|| format!("Failed to write skill file: {:?}", skill_file_path))?;
+        let skill_file_path = canonical_path.join("SKILL.md");
+        fs::write(&skill_file_path, &skill.raw_content)
+            .with_context(|| format!("Failed to write skill file: {:?}", skill_file_path))?;
+    }
 
     // Track if any symlink failed
     let mut any_symlink_failed = false;

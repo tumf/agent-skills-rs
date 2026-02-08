@@ -46,3 +46,9 @@
 - [x] ロック記録が常に `~/.agents/.skill-lock.json` に行われ、`global` のみ記録する要件とローカル非記録要件を満たせていないため、スコープ（global/local）を CLI とインストールフローに導入して条件分岐を実装する（根拠: `src/bin/my_command.rs:98`、`src/bin/my_command.rs:139`）。
 - [x] 埋め込みソースの `source_type` が `embedded`/`self` ではなく `self_` で記録されるため、ロック保存時の source type 正規化を実装する（根拠: `src/lock.rs:60`、`/tmp/skill-installer-accept-home/.agents/.skill-lock.json:6`）。
 - [x] symlink 失敗時 fallback は実装されているが `symlinkFailed = true` を返す結果モデルが存在せず要件シナリオを満たせないため、インストール結果型に `symlink_failed` を追加して返却・利用する（根拠: `src/installer.rs:34`、`src/installer.rs:91`）。
+
+## Acceptance #2 Failure Follow-up
+
+- [x] `metadata.internal` フィルタ要件が未達です。`parse_skill_file` が frontmatter のトップレベル `internal` のみを見ており、仕様シナリオの `metadata.internal: true` を内部スキルとして除外できません。`src/discovery.rs:34`-`src/discovery.rs:41` と `src/discovery.rs:133`-`src/discovery.rs:140` を修正し、`metadata.internal`（必要なら互換で `internal` も）を解釈して `INSTALL_INTERNAL_SKILLS` 未設定時に除外するテストを追加してください。
+- [x] GitHub ソースの実フロー要件が未達です。`install-skill github --yes` 実行時に `No skills found.` で終了し、`discover_skills` が GitHub/GitLab/Direct で常に空配列を返しています（`src/discovery.rs:48`-`src/discovery.rs:50`、`src/bin/my_command.rs:35` 実行結果）。mock-first 方針に従い、外部通信不要の provider 抽象 + モック実装で `discover -> install -> lock(global)` を通し、GitHub 由来シナリオを検証可能にしてください。
+- [x] ロックファイルのキー名が仕様と不一致です。仕様は `sourceType` / `sourceUrl` / `skillFolderHash` を要求していますが、実装は `source_type` / `source_url` / `skill_folder_hash` を出力しています（`src/types.rs:63`-`src/types.rs:68`、`/tmp/skill-installer-accept-home2/.agents/.skill-lock.json:6`-`/tmp/skill-installer-accept-home2/.agents/.skill-lock.json:8`）。serde の rename を使って camelCase へ合わせ、既存テストを更新してください。

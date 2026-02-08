@@ -47,9 +47,19 @@ impl LockManager {
 
     /// Update or add a skill entry in the lock file
     pub fn update_entry(&self, skill_name: &str, source: &Source, skill_path: &Path) -> Result<()> {
-        let mut lock = self.load()?;
-
         let folder_hash = compute_skill_hash(skill_path)?;
+        self.update_entry_with_hash(skill_name, source, skill_path, folder_hash)
+    }
+
+    /// Update or add a skill entry with a custom hash (for provider-based installs)
+    pub fn update_entry_with_hash(
+        &self,
+        skill_name: &str,
+        source: &Source,
+        skill_path: &Path,
+        folder_hash: String,
+    ) -> Result<()> {
+        let mut lock = self.load()?;
         let now = chrono::Utc::now();
 
         // Normalize source type for embedded/self
