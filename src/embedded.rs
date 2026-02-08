@@ -4,6 +4,12 @@ use anyhow::{Context, Result};
 /// Embedded skill content bundled at compile time
 const EMBEDDED_SKILL_CONTENT: &str = include_str!("../skills/SKILL.md");
 
+/// Skill installer content (legacy single skill location)
+const SKILL_INSTALLER_CONTENT: &str = include_str!("../skills/SKILL.md");
+
+/// Agent skills Rust integration guide
+const AGENT_SKILLS_RUST_CONTENT: &str = include_str!("../skills/agent-skills-rust/SKILL.md");
+
 /// Parse frontmatter from markdown content
 fn parse_frontmatter(content: &str) -> Result<(SkillMetadata, String, String)> {
     let lines: Vec<&str> = content.lines().collect();
@@ -53,6 +59,33 @@ pub fn get_embedded_skill() -> Result<Skill> {
         raw_content: EMBEDDED_SKILL_CONTENT.to_string(),
         metadata,
     })
+}
+
+/// Get all embedded skill definitions
+pub fn get_embedded_skills() -> Result<Vec<Skill>> {
+    let mut skills = Vec::new();
+
+    // Parse skill-installer
+    let (metadata1, name1, description1) = parse_frontmatter(SKILL_INSTALLER_CONTENT)?;
+    skills.push(Skill {
+        name: name1,
+        description: description1,
+        path: None,
+        raw_content: SKILL_INSTALLER_CONTENT.to_string(),
+        metadata: metadata1,
+    });
+
+    // Parse agent-skills-rust
+    let (metadata2, name2, description2) = parse_frontmatter(AGENT_SKILLS_RUST_CONTENT)?;
+    skills.push(Skill {
+        name: name2,
+        description: description2,
+        path: None,
+        raw_content: AGENT_SKILLS_RUST_CONTENT.to_string(),
+        metadata: metadata2,
+    });
+
+    Ok(skills)
 }
 
 #[cfg(test)]

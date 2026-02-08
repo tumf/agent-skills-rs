@@ -78,8 +78,7 @@ pub fn discover_skills_with_provider(
 
 /// Discover embedded skills
 fn discover_embedded_skills(_config: &DiscoveryConfig) -> Result<Vec<Skill>> {
-    let skill = embedded::get_embedded_skill().context("Failed to load embedded skill")?;
-    Ok(vec![skill])
+    embedded::get_embedded_skills().context("Failed to load embedded skills")
 }
 
 /// Discover skills from local file system
@@ -240,8 +239,9 @@ mod tests {
         };
 
         let skills = discover_skills(&source, &config).unwrap();
-        assert_eq!(skills.len(), 1);
+        assert_eq!(skills.len(), 2);
         assert_eq!(skills[0].name, "skill-installer");
+        assert_eq!(skills[1].name, "agent-skills-rust");
     }
 
     #[test]
@@ -256,8 +256,9 @@ mod tests {
         };
 
         let skills = discover_skills(&source, &config).unwrap();
-        assert_eq!(skills.len(), 1);
+        assert_eq!(skills.len(), 2);
         assert_eq!(skills[0].name, "skill-installer");
+        assert_eq!(skills[1].name, "agent-skills-rust");
     }
 
     #[test]

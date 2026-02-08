@@ -40,7 +40,7 @@ mod integration_tests {
         // Discover skills
         let config = DiscoveryConfig::default();
         let skills = discover_skills(&source, &config).unwrap();
-        assert_eq!(skills.len(), 1);
+        assert_eq!(skills.len(), 2);
         let skill = &skills[0];
 
         // Install skill
