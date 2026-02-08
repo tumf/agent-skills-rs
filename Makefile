@@ -1,38 +1,154 @@
-.PHONY: help fetch build release fmt lint test check prek clean
+# Makefile for agent-skills-rs
 
-help:
-	@printf "Targets:\n"
-	@printf "  make fetch    - cargo fetch\n"
-	@printf "  make build    - cargo build --all-targets\n"
-	@printf "  make release  - cargo release\n"
-	@printf "  make fmt      - cargo fmt --all\n"
-	@printf "  make lint     - cargo clippy --all-targets -- -D warnings\n"
-	@printf "  make test     - cargo test\n"
-	@printf "  make check    - fmt + lint + test\n"
-	@printf "  make prek     - alias of check\n"
-	@printf "  make clean    - cargo clean\n"
+.PHONY: build help install release test clean fmt lint check setup pre-commit-hooks bump-patch bump-minor bump-major publish publish-tag
 
-fetch:
-	cargo fetch
-
+# Default target - build debug version
 build:
-	cargo build --all-targets
+	@echo "Building debug version..."
+	cargo build
 
+# Help message
+help:
+	@echo "Available targets:"
+	@echo "  make (default)     - Build debug version"
+	@echo "  make build         - Build debug version"
+	@echo "  make install       - Install the binary to ~/.cargo/bin"
+	@echo "  make release       - Build optimized release version"
+	@echo "  make test          - Run all tests"
+	@echo "  make clean         - Clean build artifacts"
+	@echo "  make fmt           - Format code with rustfmt"
+	@echo "  make lint          - Run clippy linter"
+	@echo "  make check         - Run fmt, lint, and test"
+	@echo "  make setup         - Setup development environment"
+	@echo "  make pre-commit-hooks - Install git pre-commit hooks"
+	@echo "  make bump-patch    - Bump patch version (0.1.0 -> 0.1.1) without publish"
+	@echo "  make bump-minor    - Bump minor version (0.1.0 -> 0.2.0) without publish"
+	@echo "  make bump-major    - Bump major version (0.1.0 -> 1.0.0) without publish"
+	@echo "  make publish       - Publish current version to crates.io"
+	@echo "  make publish-tag   - Publish specific git tag to crates.io"
+
+# Install binary to ~/.cargo/bin
+install:
+	@echo "Installing agent-skills-rs..."
+	cargo install --path .
+	@echo "Installation complete. Binary installed to ~/.cargo/bin/my-command"
+
+# Build release version
 release:
-	cargo release
+	@echo "Building release version..."
+	cargo build --release
+	@echo "Release binary: target/release/my-command"
 
-fmt:
-	cargo fmt --all
-
-lint:
-	cargo clippy --all-targets -- -D warnings
-
+# Run tests
 test:
-	cargo test
+	@echo "Running tests..."
+	cargo test --verbose
 
-check: fmt lint test
-
-prek: check
-
+# Clean build artifacts
 clean:
+	@echo "Cleaning build artifacts..."
 	cargo clean
+
+# Format code
+fmt:
+	@echo "Formatting code..."
+	cargo fmt
+
+# Run linter
+lint:
+	@echo "Running clippy..."
+	cargo clippy -- -D warnings
+
+# Run all checks (format, lint, test)
+check: fmt lint test
+	@echo "All checks passed!"
+
+# Setup development environment
+setup: pre-commit-hooks
+	@echo "Setting up development environment..."
+	@command -v rustfmt >/dev/null 2>&1 || rustup component add rustfmt
+	@command -v clippy >/dev/null 2>&1 || rustup component add clippy
+	@command -v cargo-release >/dev/null 2>&1 || cargo install cargo-release
+	@echo "Development environment setup complete!"
+
+# Install pre-commit hooks
+pre-commit-hooks:
+	@echo "Installing pre-commit hooks..."
+	@mkdir -p .git/hooks
+	@printf '%s\n' \
+		'#!/bin/bash' \
+		'set -e' \
+		'' \
+		'echo "Running pre-commit checks..."' \
+		'' \
+		'# Check formatting' \
+		'echo "Checking code formatting..."' \
+		'if ! cargo fmt -- --check; then' \
+		'  echo "❌ Code formatting check failed. Run '\''cargo fmt'\'' to fix."' \
+		'  exit 1' \
+		'fi' \
+		'' \
+		'# Run clippy' \
+		'echo "Running clippy..."' \
+		'if ! cargo clippy -- -D warnings; then' \
+		'  echo "❌ Clippy check failed. Fix the warnings above."' \
+		'  exit 1' \
+		'fi' \
+		'' \
+		'# Run tests' \
+		'echo "Running tests..."' \
+		'if ! cargo test --quiet; then' \
+		'  echo "❌ Tests failed. Fix the failing tests."' \
+		'  exit 1' \
+		'fi' \
+		'' \
+		'echo "✅ All pre-commit checks passed!"' \
+		> .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "Pre-commit hooks installed successfully!"
+
+# Bump patch version (0.1.0 -> 0.1.1) and create git tag (no publish)
+bump-patch:
+	@echo "Bumping patch version..."
+	@cargo release patch --execute --no-confirm --no-publish
+	@echo "Patch version bumped and tagged successfully"
+	@echo "To publish to crates.io, run: cargo publish"
+
+# Bump minor version (0.1.0 -> 0.2.0) and create git tag (no publish)
+bump-minor:
+	@echo "Bumping minor version..."
+	@cargo release minor --execute --no-confirm --no-publish
+	@echo "Minor version bumped and tagged successfully"
+	@echo "To publish to crates.io, run: cargo publish"
+
+# Bump major version (0.1.0 -> 1.0.0) and create git tag (no publish)
+bump-major:
+	@echo "Bumping major version..."
+	@cargo release major --execute --no-confirm --no-publish
+	@echo "Major version bumped and tagged successfully"
+	@echo "To publish to crates.io, run: cargo publish"
+
+# Publish current version to crates.io
+publish:
+	@echo "Publishing to crates.io..."
+	@CURRENT_VERSION=$$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2); \
+		echo "Current version: $$CURRENT_VERSION"; \
+		read -p "Proceed with publish? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1; \
+		cargo publish
+	@echo "Published successfully!"
+
+# Publish specific git tag to crates.io
+publish-tag:
+	@echo "Available tags:"; \
+		git tag -l | tail -10; \
+		read -p "Enter tag to publish (e.g., v0.1.34): " tag; \
+		if [ -z "$$tag" ]; then \
+			echo "Error: No tag specified"; \
+			exit 1; \
+		fi; \
+		CURRENT_BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+		echo "Checking out tag: $$tag"; \
+		git checkout $$tag && \
+		cargo publish && \
+		git checkout $$CURRENT_BRANCH && \
+		echo "Published $$tag successfully and returned to $$CURRENT_BRANCH"
