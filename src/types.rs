@@ -18,6 +18,64 @@ where
     }
 }
 
+/// Legacy lock entry format (vercel-lab/AgentSkills)
+#[derive(Debug, Clone, Deserialize)]
+struct LegacyLockEntry {
+    name: String,
+    path: String,
+    source_type: String,
+}
+
+/// Helper enum for deserializing both old and new lock file formats
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum SkillLockFormat {
+    New {
+        #[serde(deserialize_with = "deserialize_lock_version")]
+        version: String,
+        #[serde(default)]
+        skills: HashMap<String, LockEntry>,
+    },
+    Legacy {
+        skills: Vec<LegacyLockEntry>,
+    },
+}
+
+impl From<SkillLockFormat> for SkillLock {
+    fn from(format: SkillLockFormat) -> Self {
+        match format {
+            SkillLockFormat::New { version, skills } => SkillLock { version, skills },
+            SkillLockFormat::Legacy { skills } => {
+                let now = chrono::Utc::now();
+                let mut skill_map = HashMap::new();
+
+                for legacy_entry in skills {
+                    // Skip entries with empty paths (not actually installed)
+                    if legacy_entry.path.is_empty() {
+                        continue;
+                    }
+
+                    let entry = LockEntry {
+                        source: legacy_entry.source_type.clone(),
+                        source_type: legacy_entry.source_type,
+                        source_url: None,
+                        skill_path: legacy_entry.path,
+                        skill_folder_hash: String::new(), // Will be computed on next update
+                        installed_at: now,
+                        updated_at: now,
+                    };
+                    skill_map.insert(legacy_entry.name, entry);
+                }
+
+                SkillLock {
+                    version: "1.0".to_string(),
+                    skills: skill_map,
+                }
+            }
+        }
+    }
+}
+
 /// Represents a skill definition
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Skill {
@@ -92,12 +150,20 @@ pub struct LockEntry {
 }
 
 /// Lock file structure
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Default, PartialEq)]
 pub struct SkillLock {
-    #[serde(deserialize_with = "deserialize_lock_version")]
     pub version: String,
-    #[serde(default)]
     pub skills: HashMap<String, LockEntry>,
+}
+
+impl<'de> serde::Deserialize<'de> for SkillLock {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let format = SkillLockFormat::deserialize(deserializer)?;
+        Ok(format.into())
+    }
 }
 
 impl SkillLock {
@@ -175,5 +241,78 @@ mod tests {
         let lock: SkillLock = serde_json::from_str(json).unwrap();
         assert_eq!(lock.version, "3");
         assert!(lock.skills.is_empty());
+    }
+
+    #[test]
+    fn test_legacy_lock_format_migration() {
+        // Test migrating from vercel-lab/AgentSkills format
+        let legacy_json = r#"{
+            "skills": [
+                {
+                    "name": "test-skill-1",
+                    "path": "/path/to/skill1",
+                    "source_type": "github"
+                },
+                {
+                    "name": "test-skill-2",
+                    "path": "",
+                    "source_type": "github"
+                },
+                {
+                    "name": "test-skill-3",
+                    "path": "/path/to/skill3",
+                    "source_type": "self"
+                }
+            ]
+        }"#;
+
+        let lock: SkillLock = serde_json::from_str(legacy_json).unwrap();
+
+        // Should have version 1.0 after migration
+        assert_eq!(lock.version, "1.0");
+
+        // Should only include skills with non-empty paths
+        assert_eq!(lock.skills.len(), 2);
+        assert!(lock.skills.contains_key("test-skill-1"));
+        assert!(lock.skills.contains_key("test-skill-3"));
+        assert!(!lock.skills.contains_key("test-skill-2")); // Empty path, should be skipped
+
+        // Check migrated entry structure
+        let entry1 = lock.skills.get("test-skill-1").unwrap();
+        assert_eq!(entry1.source, "github");
+        assert_eq!(entry1.source_type, "github");
+        assert_eq!(entry1.skill_path, "/path/to/skill1");
+        assert_eq!(entry1.skill_folder_hash, ""); // Will be computed on next update
+
+        let entry3 = lock.skills.get("test-skill-3").unwrap();
+        assert_eq!(entry3.source, "self");
+        assert_eq!(entry3.source_type, "self");
+    }
+
+    #[test]
+    fn test_new_lock_format_still_works() {
+        // Ensure new format continues to work
+        let new_json = r#"{
+            "version": "1.0",
+            "skills": {
+                "test-skill": {
+                    "source": "github",
+                    "sourceType": "github",
+                    "skillPath": "/path/to/skill",
+                    "skillFolderHash": "abc123",
+                    "installedAt": "2024-01-01T00:00:00Z",
+                    "updatedAt": "2024-01-01T00:00:00Z"
+                }
+            }
+        }"#;
+
+        let lock: SkillLock = serde_json::from_str(new_json).unwrap();
+
+        assert_eq!(lock.version, "1.0");
+        assert_eq!(lock.skills.len(), 1);
+        assert!(lock.skills.contains_key("test-skill"));
+
+        let entry = lock.skills.get("test-skill").unwrap();
+        assert_eq!(entry.skill_folder_hash, "abc123");
     }
 }

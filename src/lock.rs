@@ -270,4 +270,56 @@ mod tests {
         assert_eq!(lock.version, "3");
         assert!(lock.skills.is_empty());
     }
+
+    #[test]
+    fn test_load_legacy_array_format() {
+        // Test loading vercel-lab/AgentSkills format
+        let temp_dir = TempDir::new().unwrap();
+        let lock_path = temp_dir.path().join(".skill-lock.json");
+
+        fs::write(
+            &lock_path,
+            r#"{
+  "skills": [
+    {
+      "name": "skill-1",
+      "path": "/path/to/skill1",
+      "source_type": "github"
+    },
+    {
+      "name": "skill-2",
+      "path": "",
+      "source_type": "github"
+    },
+    {
+      "name": "skill-3",
+      "path": "/path/to/skill3",
+      "source_type": "self"
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let manager = LockManager::new(lock_path.clone());
+        let lock = manager.load().unwrap();
+
+        // Should auto-migrate to new format
+        assert_eq!(lock.version, "1.0");
+        assert_eq!(lock.skills.len(), 2); // Only skills with non-empty paths
+
+        assert!(lock.skills.contains_key("skill-1"));
+        assert!(lock.skills.contains_key("skill-3"));
+        assert!(!lock.skills.contains_key("skill-2")); // Empty path
+
+        let entry = lock.skills.get("skill-1").unwrap();
+        assert_eq!(entry.source_type, "github");
+        assert_eq!(entry.skill_path, "/path/to/skill1");
+
+        // Save and verify new format is persisted
+        manager.save(&lock).unwrap();
+        let reloaded = manager.load().unwrap();
+        assert_eq!(reloaded.version, "1.0");
+        assert_eq!(reloaded.skills.len(), 2);
+    }
 }
