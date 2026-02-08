@@ -101,20 +101,30 @@ fn parse_agents(agents: &[String]) -> Result<Vec<String>> {
 }
 
 /// Resolve agent names to target directories
-fn resolve_target_dirs(agents: &[String], base_dir: &Path) -> Result<Vec<PathBuf>> {
-    let known_agents = [
-        ("claude", ".claude/skills"),
-        ("opencode", ".config/opencode/skills"),
-    ];
-
+/// For OpenCode, returns target dir only in global scope (since project scope uses .agents/skills as universal location)
+fn resolve_target_dirs(
+    agents: &[String],
+    base_dir: &Path,
+    is_global: bool,
+) -> Result<Vec<PathBuf>> {
     let mut target_dirs = Vec::new();
 
     for agent in agents {
-        let found = known_agents.iter().find(|(name, _)| *name == agent);
-        if let Some((_, path)) = found {
-            target_dirs.push(base_dir.join(path));
-        } else {
-            anyhow::bail!("Unknown agent: '{}'. Known agents: claude, opencode", agent);
+        match agent.as_str() {
+            "claude" => {
+                // Claude always uses agent-specific directory
+                target_dirs.push(base_dir.join(".claude/skills"));
+            }
+            "opencode" => {
+                if is_global {
+                    // Global scope: use ~/.config/opencode/skills as target
+                    target_dirs.push(base_dir.join(".config/opencode/skills"));
+                }
+                // Project scope: .agents/skills is universal, no additional target dir needed
+            }
+            _ => {
+                anyhow::bail!("Unknown agent: '{}'. Known agents: claude, opencode", agent);
+            }
         }
     }
 
@@ -178,7 +188,7 @@ fn install_skill_command(
 
     // Resolve target directories if agents specified
     let target_dirs = if !normalized_agents.is_empty() {
-        resolve_target_dirs(&normalized_agents, &base_dir)?
+        resolve_target_dirs(&normalized_agents, &base_dir, is_global)?
     } else {
         Vec::new()
     };
@@ -197,23 +207,21 @@ fn install_skill_command(
 
         println!("Installing skill '{}'...", skill.name);
 
-        // Install to canonical directory
-        let install_config = InstallConfig::new(canonical_dir.clone());
+        // Install to canonical directory and link/copy to target directories
+        let mut install_config = InstallConfig::new(canonical_dir.clone());
+        install_config.target_dirs = target_dirs.clone();
         let result = install_skill(skill, &install_config)?;
 
         println!("  Installed to: {}", result.path.display());
-        if result.symlink_failed {
-            println!("  Note: Symlink failed, used copy instead.");
+
+        // Report target directories
+        for target_dir in &target_dirs {
+            let target_path = target_dir.join(&skill.name);
+            println!("  Linked to: {}", target_path.display());
         }
 
-        // Install to target agent directories
-        for target_dir in &target_dirs {
-            let target_config = InstallConfig::new(target_dir.clone());
-            let target_result = install_skill(skill, &target_config)?;
-            println!("  Installed to: {}", target_result.path.display());
-            if target_result.symlink_failed {
-                println!("  Note: Symlink failed, used copy instead.");
-            }
+        if result.symlink_failed {
+            println!("  Note: Some symlinks failed, used copy fallback.");
         }
 
         let lock_manager = LockManager::new(lock_path.clone());
@@ -229,6 +237,7 @@ fn install_skill_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use skill_installer::types::SkillMetadata;
 
     #[test]
     fn test_parse_agents_single() {
@@ -284,15 +293,25 @@ mod tests {
     fn test_resolve_target_dirs_claude() {
         let agents = vec!["claude".to_string()];
         let base_dir = PathBuf::from("/home/user");
-        let result = resolve_target_dirs(&agents, &base_dir).unwrap();
+        let result = resolve_target_dirs(&agents, &base_dir, false).unwrap();
         assert_eq!(result, vec![PathBuf::from("/home/user/.claude/skills")]);
     }
 
     #[test]
-    fn test_resolve_target_dirs_opencode() {
+    fn test_resolve_target_dirs_opencode_project_scope() {
+        let agents = vec!["opencode".to_string()];
+        let base_dir = PathBuf::from("/home/user/project");
+        let result = resolve_target_dirs(&agents, &base_dir, false).unwrap();
+        // Project scope: no additional target dir (uses canonical .agents/skills)
+        assert_eq!(result, Vec::<PathBuf>::new());
+    }
+
+    #[test]
+    fn test_resolve_target_dirs_opencode_global_scope() {
         let agents = vec!["opencode".to_string()];
         let base_dir = PathBuf::from("/home/user");
-        let result = resolve_target_dirs(&agents, &base_dir).unwrap();
+        let result = resolve_target_dirs(&agents, &base_dir, true).unwrap();
+        // Global scope: adds ~/.config/opencode/skills as target
         assert_eq!(
             result,
             vec![PathBuf::from("/home/user/.config/opencode/skills")]
@@ -300,10 +319,23 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_target_dirs_multiple() {
+    fn test_resolve_target_dirs_multiple_project_scope() {
+        let agents = vec!["claude".to_string(), "opencode".to_string()];
+        let base_dir = PathBuf::from("/home/user/project");
+        let result = resolve_target_dirs(&agents, &base_dir, false).unwrap();
+        // Project scope: only claude gets target dir
+        assert_eq!(
+            result,
+            vec![PathBuf::from("/home/user/project/.claude/skills")]
+        );
+    }
+
+    #[test]
+    fn test_resolve_target_dirs_multiple_global_scope() {
         let agents = vec!["claude".to_string(), "opencode".to_string()];
         let base_dir = PathBuf::from("/home/user");
-        let result = resolve_target_dirs(&agents, &base_dir).unwrap();
+        let result = resolve_target_dirs(&agents, &base_dir, true).unwrap();
+        // Global scope: both get target dirs
         assert_eq!(
             result,
             vec![
@@ -317,7 +349,7 @@ mod tests {
     fn test_resolve_target_dirs_unknown_agent() {
         let agents = vec!["unknown".to_string()];
         let base_dir = PathBuf::from("/home/user");
-        let result = resolve_target_dirs(&agents, &base_dir);
+        let result = resolve_target_dirs(&agents, &base_dir, false);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -329,7 +361,140 @@ mod tests {
     fn test_resolve_target_dirs_empty() {
         let agents = vec![];
         let base_dir = PathBuf::from("/home/user");
-        let result = resolve_target_dirs(&agents, &base_dir).unwrap();
+        let result = resolve_target_dirs(&agents, &base_dir, false).unwrap();
         assert_eq!(result, Vec::<PathBuf>::new());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_agent_specific_installation_with_symlinks() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_dir = temp_dir.path();
+
+        // Setup paths
+        let canonical_dir = base_dir.join(".agents/skills");
+        let claude_target = base_dir.join(".claude/skills");
+
+        // Create a test skill
+        let skill = Skill {
+            name: "test-skill".to_string(),
+            description: "Test skill".to_string(),
+            path: None,
+            raw_content: "---\nname: test-skill\ndescription: Test skill\n---\n\n# Test"
+                .to_string(),
+            metadata: SkillMetadata::default(),
+        };
+
+        // Install with target_dirs
+        let mut install_config = InstallConfig::new(canonical_dir.clone());
+        install_config.target_dirs = vec![claude_target.clone()];
+
+        let result = install_skill(&skill, &install_config).unwrap();
+
+        // Verify canonical installation
+        assert_eq!(result.path, canonical_dir.join("test-skill"));
+        assert!(result.path.exists());
+        assert!(result.path.join("SKILL.md").exists());
+
+        // Verify target symlink on Unix
+        let target_path = claude_target.join("test-skill");
+        assert!(target_path.exists());
+
+        let metadata = std::fs::symlink_metadata(&target_path).unwrap();
+        assert!(
+            metadata.file_type().is_symlink(),
+            "Target should be a symlink"
+        );
+        assert!(!result.symlink_failed, "Symlink should not have failed");
+
+        // Verify symlink points to canonical
+        let link_target = std::fs::read_link(&target_path).unwrap();
+        assert_eq!(link_target, canonical_dir.join("test-skill"));
+    }
+
+    #[test]
+    fn test_opencode_project_scope_no_target_dir() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_dir = temp_dir.path();
+
+        // Setup paths
+        let canonical_dir = base_dir.join(".agents/skills");
+
+        // Resolve target dirs for opencode in project scope
+        let agents = vec!["opencode".to_string()];
+        let target_dirs = resolve_target_dirs(&agents, base_dir, false).unwrap();
+
+        // Should be empty (no additional target dir needed)
+        assert_eq!(target_dirs.len(), 0);
+
+        // Create a test skill
+        let skill = Skill {
+            name: "test-skill".to_string(),
+            description: "Test skill".to_string(),
+            path: None,
+            raw_content: "---\nname: test-skill\ndescription: Test skill\n---\n\n# Test"
+                .to_string(),
+            metadata: SkillMetadata::default(),
+        };
+
+        // Install with empty target_dirs
+        let mut install_config = InstallConfig::new(canonical_dir.clone());
+        install_config.target_dirs = target_dirs;
+
+        let result = install_skill(&skill, &install_config).unwrap();
+
+        // Verify only canonical installation exists
+        assert_eq!(result.path, canonical_dir.join("test-skill"));
+        assert!(result.path.exists());
+        assert!(result.path.join("SKILL.md").exists());
+        assert!(!result.symlink_failed);
+    }
+
+    #[test]
+    fn test_opencode_global_scope_has_target_dir() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let base_dir = temp_dir.path();
+
+        // Setup paths
+        let canonical_dir = base_dir.join(".agents/skills");
+
+        // Resolve target dirs for opencode in global scope
+        let agents = vec!["opencode".to_string()];
+        let target_dirs = resolve_target_dirs(&agents, base_dir, true).unwrap();
+
+        // Should have one target dir
+        assert_eq!(target_dirs.len(), 1);
+        assert_eq!(target_dirs[0], base_dir.join(".config/opencode/skills"));
+
+        // Create a test skill
+        let skill = Skill {
+            name: "test-skill".to_string(),
+            description: "Test skill".to_string(),
+            path: None,
+            raw_content: "---\nname: test-skill\ndescription: Test skill\n---\n\n# Test"
+                .to_string(),
+            metadata: SkillMetadata::default(),
+        };
+
+        // Install with target_dirs
+        let mut install_config = InstallConfig::new(canonical_dir.clone());
+        install_config.target_dirs = target_dirs.clone();
+
+        let result = install_skill(&skill, &install_config).unwrap();
+
+        // Verify canonical installation
+        assert_eq!(result.path, canonical_dir.join("test-skill"));
+        assert!(result.path.exists());
+
+        // Verify target installation
+        let target_path = target_dirs[0].join("test-skill");
+        assert!(target_path.exists());
+        assert!(target_path.join("SKILL.md").exists());
     }
 }
