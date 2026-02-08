@@ -1,10 +1,12 @@
 use agent_skills_rs::*;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use directories::BaseDirs;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
-#[command(name = "my-command")]
+#[command(name = "agent-skills-rs")]
 #[command(about = "A CLI tool with skill installation support", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -43,6 +45,9 @@ enum Commands {
         /// Run in non-interactive mode
         #[arg(long)]
         non_interactive: bool,
+        /// Output result as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -75,8 +80,15 @@ fn main() -> Result<()> {
             global,
             yes,
             non_interactive,
+            json,
         } => {
-            install_skill_command(&agent, skill.as_deref(), global, yes || non_interactive)?;
+            install_skill_command(
+                &agent,
+                skill.as_deref(),
+                global,
+                yes || non_interactive,
+                json,
+            )?;
         }
     }
 
@@ -131,12 +143,44 @@ fn resolve_target_dirs(
     Ok(target_dirs)
 }
 
+/// JSON output structure for install-skills command
+#[derive(Debug, Serialize, Deserialize)]
+struct InstallResult {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    installed_skills: Option<Vec<InstalledSkill>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct InstalledSkill {
+    name: String,
+    description: String,
+    canonical_path: String,
+    target_paths: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    symlink_failed: Option<bool>,
+}
+
 fn install_skill_command(
     agents: &[String],
     skill_filter: Option<&str>,
     is_global: bool,
     auto_confirm: bool,
+    json_output: bool,
 ) -> Result<()> {
+    // Macro to log messages: to stderr in JSON mode, stdout otherwise
+    macro_rules! log_msg {
+        ($($arg:tt)*) => {
+            if json_output {
+                eprintln!($($arg)*);
+            } else {
+                println!($($arg)*);
+            }
+        };
+    }
+
     let source = Source {
         source_type: SourceType::Self_,
         url: None,
@@ -147,7 +191,8 @@ fn install_skill_command(
 
     // Setup paths
     let base_dir = if is_global {
-        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+        let base_dirs = BaseDirs::new().context("Failed to determine home directory")?;
+        base_dirs.home_dir().to_path_buf()
     } else {
         std::env::current_dir()?
     };
@@ -158,9 +203,9 @@ fn install_skill_command(
     let normalized_agents = parse_agents(agents)?;
 
     if is_global {
-        println!("Discovering embedded skills (scope: global)");
+        log_msg!("Discovering embedded skills (scope: global)");
     } else {
-        println!("Discovering embedded skills (scope: project)");
+        log_msg!("Discovering embedded skills (scope: project)");
     }
 
     // Discover skills
@@ -168,7 +213,15 @@ fn install_skill_command(
     let mut skills = discover_skills(&source, &config)?;
 
     if skills.is_empty() {
-        println!("No skills found.");
+        log_msg!("No skills found.");
+        if json_output {
+            let result = InstallResult {
+                ok: true,
+                installed_skills: Some(vec![]),
+                error: None,
+            };
+            println!("{}", serde_json::to_string(&result)?);
+        }
         return Ok(());
     }
 
@@ -176,14 +229,22 @@ fn install_skill_command(
     if let Some(filter) = skill_filter {
         skills.retain(|s| s.name == filter);
         if skills.is_empty() {
-            println!("No skill matching '{}' found.", filter);
+            log_msg!("No skill matching '{}' found.", filter);
+            if json_output {
+                let result = InstallResult {
+                    ok: true,
+                    installed_skills: Some(vec![]),
+                    error: None,
+                };
+                println!("{}", serde_json::to_string(&result)?);
+            }
             return Ok(());
         }
     }
 
-    println!("Found {} skill(s):", skills.len());
+    log_msg!("Found {} skill(s):", skills.len());
     for skill in &skills {
-        println!("  - {} ({})", skill.name, skill.description);
+        log_msg!("  - {} ({})", skill.name, skill.description);
     }
 
     // Resolve target directories if agents specified
@@ -193,44 +254,72 @@ fn install_skill_command(
         Vec::new()
     };
 
+    // Collect installation results
+    let mut installed_skills = Vec::new();
+
     // Install each skill
     for skill in &skills {
-        if !auto_confirm {
+        if !auto_confirm && !json_output {
             println!("\nInstall skill '{}'? (y/n)", skill.name);
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
             if !input.trim().eq_ignore_ascii_case("y") {
-                println!("Skipped.");
+                log_msg!("Skipped.");
                 continue;
             }
         }
 
-        println!("Installing skill '{}'...", skill.name);
+        log_msg!("Installing skill '{}'...", skill.name);
 
         // Install to canonical directory and link/copy to target directories
         let mut install_config = InstallConfig::new(canonical_dir.clone());
         install_config.target_dirs = target_dirs.clone();
         let result = install_skill(skill, &install_config)?;
 
-        println!("  Installed to: {}", result.path.display());
+        log_msg!("  Installed to: {}", result.path.display());
 
         // Report target directories
+        let mut target_paths = Vec::new();
         for target_dir in &target_dirs {
             let target_path = target_dir.join(&skill.name);
-            println!("  Linked to: {}", target_path.display());
+            log_msg!("  Linked to: {}", target_path.display());
+            target_paths.push(target_path.display().to_string());
         }
 
         if result.symlink_failed {
-            println!("  Note: Some symlinks failed, used copy fallback.");
+            log_msg!("  Note: Some symlinks failed, used copy fallback.");
         }
 
         let lock_manager = LockManager::new(lock_path.clone());
         lock_manager.update_entry(&skill.name, &source, &result.path)?;
 
-        println!("  Lock file updated: {}", lock_path.display());
+        log_msg!("  Lock file updated: {}", lock_path.display());
+
+        installed_skills.push(InstalledSkill {
+            name: skill.name.clone(),
+            description: skill.description.clone(),
+            canonical_path: result.path.display().to_string(),
+            target_paths,
+            symlink_failed: if result.symlink_failed {
+                Some(true)
+            } else {
+                None
+            },
+        });
     }
 
-    println!("\nInstallation complete!");
+    log_msg!("\nInstallation complete!");
+
+    // Output JSON result if requested
+    if json_output {
+        let result = InstallResult {
+            ok: true,
+            installed_skills: Some(installed_skills),
+            error: None,
+        };
+        println!("{}", serde_json::to_string(&result)?);
+    }
+
     Ok(())
 }
 
