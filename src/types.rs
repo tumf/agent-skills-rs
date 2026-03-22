@@ -86,6 +86,10 @@ pub struct Skill {
     pub raw_content: String,
     #[serde(default)]
     pub metadata: SkillMetadata,
+    /// Additional files bundled with the skill, keyed by relative path.
+    /// Example: {"scripts/helper.py": "<content>", "references/guide.md": "..."}
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub auxiliary_files: HashMap<String, String>,
 }
 
 /// Metadata for a skill
@@ -207,6 +211,7 @@ mod tests {
             path: Some("/path/to/skill".to_string()),
             raw_content: "# Test\nContent".to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: HashMap::new(),
         };
 
         let json = serde_json::to_string(&skill).unwrap();

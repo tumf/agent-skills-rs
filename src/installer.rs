@@ -72,6 +72,19 @@ pub fn install_skill_with_provider(
         let skill_file_path = canonical_path.join("SKILL.md");
         fs::write(&skill_file_path, &skill.raw_content)
             .with_context(|| format!("Failed to write skill file: {:?}", skill_file_path))?;
+
+        // Write auxiliary files alongside SKILL.md
+        for (rel_path, content) in &skill.auxiliary_files {
+            let file_path = canonical_path.join(rel_path);
+            if let Some(parent) = file_path.parent() {
+                fs::create_dir_all(parent).with_context(|| {
+                    format!("Failed to create directory for auxiliary file: {:?}", parent)
+                })?;
+            }
+            fs::write(&file_path, content).with_context(|| {
+                format!("Failed to write auxiliary file: {:?}", file_path)
+            })?;
+        }
     }
 
     // Track if any symlink failed
@@ -169,6 +182,7 @@ mod tests {
             raw_content: "---\nname: test-skill\ndescription: Test skill\n---\n\n# Test"
                 .to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         }
     }
 
@@ -235,6 +249,44 @@ mod tests {
 
         let content = fs::read_to_string(target_path.join("SKILL.md")).unwrap();
         assert_eq!(content, skill.raw_content);
+    }
+
+    #[test]
+    fn test_install_skill_with_auxiliary_files() {
+        use std::collections::HashMap;
+
+        let temp_dir = TempDir::new().unwrap();
+        let canonical_dir = temp_dir.path().join(".agents/skills");
+
+        let mut auxiliary_files = HashMap::new();
+        auxiliary_files.insert("scripts/helper.py".to_string(), "print('hello')".to_string());
+        auxiliary_files.insert(
+            "references/guide.md".to_string(),
+            "# Guide\nContent".to_string(),
+        );
+
+        let skill = Skill {
+            name: "multi-file-skill".to_string(),
+            description: "Skill with auxiliary files".to_string(),
+            path: None,
+            raw_content: "---\nname: multi-file-skill\ndescription: Skill with auxiliary files\n---\n\n# Test"
+                .to_string(),
+            metadata: SkillMetadata::default(),
+            auxiliary_files,
+        };
+
+        let config = InstallConfig::new(canonical_dir.clone());
+        let result = install_skill(&skill, &config).unwrap();
+
+        assert!(result.path.join("SKILL.md").exists());
+        assert!(result.path.join("scripts/helper.py").exists());
+        assert!(result.path.join("references/guide.md").exists());
+
+        let helper_content = fs::read_to_string(result.path.join("scripts/helper.py")).unwrap();
+        assert_eq!(helper_content, "print('hello')");
+
+        let guide_content = fs::read_to_string(result.path.join("references/guide.md")).unwrap();
+        assert_eq!(guide_content, "# Guide\nContent");
     }
 
     #[test]

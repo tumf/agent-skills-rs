@@ -65,6 +65,7 @@ mod tests {
             raw_content: "---\nname: test-skill\ndescription: Test skill\n---\n\n# Test"
                 .to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         let provider = MockProvider::new(vec![skill.clone()]);
@@ -85,6 +86,7 @@ mod tests {
             raw_content: "---\nname: test-skill\ndescription: Test skill\n---\n\n# Test"
                 .to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         let provider = MockProvider::new(vec![skill.clone()]);
@@ -105,6 +107,7 @@ mod tests {
             path: None,
             raw_content: "test".to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         let provider =

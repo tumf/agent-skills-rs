@@ -1,5 +1,6 @@
 use crate::types::{Skill, SkillMetadata};
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 
 const AGENT_SKILLS_RUST_CONTENT: &str = include_str!("../skills/agent-skills-rs/SKILL.md");
 
@@ -41,34 +42,37 @@ fn parse_frontmatter(content: &str) -> Result<(SkillMetadata, String, String)> {
     Ok((SkillMetadata::default(), name, description))
 }
 
-/// Get the embedded skill definition
-pub fn get_embedded_skill() -> Result<Skill> {
-    let (metadata, name, description) = parse_frontmatter(AGENT_SKILLS_RUST_CONTENT)?;
+/// Register an embedded skill from SKILL.md content and optional auxiliary files.
+///
+/// `skill_md` must contain valid YAML frontmatter with `name` and `description` fields.
+/// `auxiliary` is a slice of `(relative_path, content)` pairs for extra files bundled
+/// with the skill (e.g. `("scripts/helper.py", include_str!("scripts/helper.py"))`).
+pub fn register_embedded_skill(skill_md: &str, auxiliary: &[(&str, &str)]) -> Result<Skill> {
+    let (metadata, name, description) = parse_frontmatter(skill_md)?;
+
+    let mut auxiliary_files = HashMap::new();
+    for (rel_path, content) in auxiliary {
+        auxiliary_files.insert(rel_path.to_string(), content.to_string());
+    }
 
     Ok(Skill {
         name,
         description,
         path: None,
-        raw_content: AGENT_SKILLS_RUST_CONTENT.to_string(),
+        raw_content: skill_md.to_string(),
         metadata,
+        auxiliary_files,
     })
+}
+
+/// Get the embedded skill definition
+pub fn get_embedded_skill() -> Result<Skill> {
+    register_embedded_skill(AGENT_SKILLS_RUST_CONTENT, &[])
 }
 
 /// Get all embedded skill definitions
 pub fn get_embedded_skills() -> Result<Vec<Skill>> {
-    let mut skills = Vec::new();
-
-    // Parse agent-skills-rs
-    let (metadata, name, description) = parse_frontmatter(AGENT_SKILLS_RUST_CONTENT)?;
-    skills.push(Skill {
-        name,
-        description,
-        path: None,
-        raw_content: AGENT_SKILLS_RUST_CONTENT.to_string(),
-        metadata,
-    });
-
-    Ok(skills)
+    Ok(vec![register_embedded_skill(AGENT_SKILLS_RUST_CONTENT, &[])?])
 }
 
 #[cfg(test)]
@@ -140,6 +144,52 @@ Content
         let result = parse_frontmatter(content);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("description"));
+    }
+
+    #[test]
+    fn test_register_embedded_skill_with_aux_files() {
+        let skill_md = r#"---
+name: my-skill
+description: A skill with aux files
+---
+
+# My Skill
+"#;
+        let skill = register_embedded_skill(
+            skill_md,
+            &[
+                ("scripts/helper.py", "print('hello')"),
+                ("references/guide.md", "# Guide"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(skill.name, "my-skill");
+        assert_eq!(skill.description, "A skill with aux files");
+        assert_eq!(skill.raw_content, skill_md);
+        assert_eq!(skill.auxiliary_files.len(), 2);
+        assert_eq!(
+            skill.auxiliary_files.get("scripts/helper.py").unwrap(),
+            "print('hello')"
+        );
+        assert_eq!(
+            skill.auxiliary_files.get("references/guide.md").unwrap(),
+            "# Guide"
+        );
+    }
+
+    #[test]
+    fn test_register_embedded_skill_no_aux_files() {
+        let skill_md = r#"---
+name: simple-skill
+description: A simple skill
+---
+
+# Simple Skill
+"#;
+        let skill = register_embedded_skill(skill_md, &[]).unwrap();
+        assert_eq!(skill.name, "simple-skill");
+        assert!(skill.auxiliary_files.is_empty());
     }
 
     #[test]

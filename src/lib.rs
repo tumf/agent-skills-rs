@@ -8,7 +8,7 @@ pub mod types;
 
 pub use cli::{get_command_schema, get_commands, output_commands_json};
 pub use discovery::{discover_skills, discover_skills_with_provider, DiscoveryConfig};
-pub use embedded::get_embedded_skill;
+pub use embedded::{get_embedded_skill, register_embedded_skill};
 pub use installer::{
     install_skill, install_skill_with_provider, InstallConfig, InstallMode, InstallResult,
 };
@@ -114,6 +114,54 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_end_to_end_embedded_install_with_aux_files() {
+        use std::collections::HashMap;
+        use types::SkillMetadata;
+
+        let temp_dir = TempDir::new().unwrap();
+        let canonical_dir = temp_dir.path().join(".agents/skills");
+
+        // Register a skill with auxiliary files
+        let mut auxiliary_files = HashMap::new();
+        auxiliary_files.insert(
+            "scripts/run.py".to_string(),
+            "#!/usr/bin/env python3\nprint('running')".to_string(),
+        );
+        auxiliary_files.insert(
+            "references/overview.md".to_string(),
+            "# Overview\nSkill overview.".to_string(),
+        );
+
+        let skill = Skill {
+            name: "embedded-multi-skill".to_string(),
+            description: "Multi-file embedded skill".to_string(),
+            path: None,
+            raw_content:
+                "---\nname: embedded-multi-skill\ndescription: Multi-file embedded skill\n---\n\n# Skill"
+                    .to_string(),
+            metadata: SkillMetadata::default(),
+            auxiliary_files,
+        };
+
+        // Install the skill
+        let install_config = InstallConfig::new(canonical_dir.clone());
+        let result = install_skill(&skill, &install_config).unwrap();
+
+        // Verify all files exist with correct content
+        assert!(result.path.join("SKILL.md").exists());
+        let skill_md = std::fs::read_to_string(result.path.join("SKILL.md")).unwrap();
+        assert_eq!(skill_md, skill.raw_content);
+
+        assert!(result.path.join("scripts/run.py").exists());
+        let run_py = std::fs::read_to_string(result.path.join("scripts/run.py")).unwrap();
+        assert_eq!(run_py, "#!/usr/bin/env python3\nprint('running')");
+
+        assert!(result.path.join("references/overview.md").exists());
+        let overview = std::fs::read_to_string(result.path.join("references/overview.md")).unwrap();
+        assert_eq!(overview, "# Overview\nSkill overview.");
+    }
+
+    #[test]
     fn test_github_flow_with_mock_provider() {
         // Test the complete flow: discover -> install -> lock for GitHub source
         use types::SkillMetadata;
@@ -138,6 +186,7 @@ This is a test skill.
 "#
             .to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         // Create mock provider
@@ -234,6 +283,7 @@ description: CLI GitHub skill
 "#
             .to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         let provider = MockProvider::new(vec![mock_skill]).with_hash("cli-mock-hash".to_string());
