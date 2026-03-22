@@ -474,6 +474,7 @@ mod tests {
             raw_content: "---\nname: test-skill\ndescription: Test skill\n---\n\n# Test"
                 .to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         // Install with target_dirs
@@ -528,6 +529,7 @@ mod tests {
             raw_content: "---\nname: test-skill\ndescription: Test skill\n---\n\n# Test"
                 .to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         // Install with empty target_dirs
@@ -569,6 +571,7 @@ mod tests {
             raw_content: "---\nname: test-skill\ndescription: Test skill\n---\n\n# Test"
                 .to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         // Install with target_dirs

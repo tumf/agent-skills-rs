@@ -29,6 +29,9 @@ This library provides a Rust implementation of skill installation functionality 
 
 The CLI installs skill(s) embedded in the binary by default.
 
+Skills can include auxiliary files (scripts, reference documents) alongside `SKILL.md`.
+Use `register_embedded_skill()` to bundle multiple files at compile time.
+
 ## Architecture
 
 ### Modules
@@ -73,6 +76,28 @@ let installed_path = install_skill(&skills[0], &install_config).unwrap();
 // Update lock
 let lock_manager = LockManager::new(lock_path);
 lock_manager.update_entry(&skills[0].name, &source, &installed_path).unwrap();
+```
+
+### Multi-File Embedded Skills
+
+Use `register_embedded_skill()` to bundle `SKILL.md` and auxiliary files at compile time.
+All registered files are written to disk when the skill is installed.
+
+```rust
+use agent_skills_rs::{register_embedded_skill, install_skill, InstallConfig};
+
+// Bundle SKILL.md plus auxiliary files at compile time
+let skill = register_embedded_skill(
+    include_str!("../skills/my-skill/SKILL.md"),
+    &[
+        ("scripts/helper.py", include_str!("../skills/my-skill/scripts/helper.py")),
+        ("references/guide.md", include_str!("../skills/my-skill/references/guide.md")),
+    ],
+).unwrap();
+
+// Install: writes SKILL.md, scripts/helper.py, and references/guide.md to disk
+let config = InstallConfig::new(canonical_dir);
+install_skill(&skill, &config).unwrap();
 ```
 
 ### CLI Introspection
@@ -134,8 +159,9 @@ pub struct Skill {
     pub name: String,
     pub description: String,
     pub path: Option<String>,
-    pub raw_content: String,
+    pub raw_content: String,      // SKILL.md content
     pub metadata: SkillMetadata,
+    pub auxiliary_files: HashMap<String, String>, // relative_path -> content
 }
 ```
 

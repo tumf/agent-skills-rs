@@ -192,6 +192,7 @@ fn parse_skill_file(path: &Path, config: &DiscoveryConfig) -> Result<Skill> {
         path: Some(path.to_string_lossy().to_string()),
         raw_content: content,
         metadata,
+        auxiliary_files: Default::default(),
     })
 }
 
@@ -472,6 +473,7 @@ description: A skill from GitHub
 "#
             .to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         let provider = MockProvider::new(vec![skill]);
@@ -504,6 +506,7 @@ description: A skill from GitHub
                 internal: true,
                 extra: Default::default(),
             },
+            auxiliary_files: Default::default(),
         };
 
         let public_skill = Skill {
@@ -512,6 +515,7 @@ description: A skill from GitHub
             path: None,
             raw_content: "test".to_string(),
             metadata: SkillMetadata::default(),
+            auxiliary_files: Default::default(),
         };
 
         let provider = MockProvider::new(vec![internal_skill, public_skill]);
