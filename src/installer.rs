@@ -78,10 +78,7 @@ pub fn install_skill_with_provider(
             // Security: reject absolute paths and path traversal outside skill root
             let rel = Path::new(rel_path);
             if rel.is_absolute() {
-                bail!(
-                    "Auxiliary file path must be relative, got: {:?}",
-                    rel_path
-                );
+                bail!("Auxiliary file path must be relative, got: {:?}", rel_path);
             }
             // Normalize and ensure path stays within canonical_path
             let file_path = canonical_path.join(rel_path);
@@ -116,12 +113,14 @@ pub fn install_skill_with_provider(
             let _ = canonical_file; // used for future post-write checks
             if let Some(parent) = file_path.parent() {
                 fs::create_dir_all(parent).with_context(|| {
-                    format!("Failed to create directory for auxiliary file: {:?}", parent)
+                    format!(
+                        "Failed to create directory for auxiliary file: {:?}",
+                        parent
+                    )
                 })?;
             }
-            fs::write(&file_path, content).with_context(|| {
-                format!("Failed to write auxiliary file: {:?}", file_path)
-            })?;
+            fs::write(&file_path, content)
+                .with_context(|| format!("Failed to write auxiliary file: {:?}", file_path))?;
         }
     }
 
@@ -297,7 +296,10 @@ mod tests {
         let canonical_dir = temp_dir.path().join(".agents/skills");
 
         let mut auxiliary_files = HashMap::new();
-        auxiliary_files.insert("scripts/helper.py".to_string(), "print('hello')".to_string());
+        auxiliary_files.insert(
+            "scripts/helper.py".to_string(),
+            "print('hello')".to_string(),
+        );
         auxiliary_files.insert(
             "references/guide.md".to_string(),
             "# Guide\nContent".to_string(),
@@ -348,7 +350,10 @@ mod tests {
 
         let config = InstallConfig::new(canonical_dir.clone());
         let result = install_skill(&skill, &config);
-        assert!(result.is_err(), "Expected error for absolute auxiliary path");
+        assert!(
+            result.is_err(),
+            "Expected error for absolute auxiliary path"
+        );
         let err = result.unwrap_err().to_string();
         assert!(
             err.contains("must be relative"),
@@ -394,7 +399,10 @@ mod tests {
         );
         // Confirm no files were written outside temp_dir
         let outside = temp_dir.path().parent().unwrap().join("outside/secret.txt");
-        assert!(!outside.exists(), "File must not be written outside skill dir");
+        assert!(
+            !outside.exists(),
+            "File must not be written outside skill dir"
+        );
     }
 
     #[test]

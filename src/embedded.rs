@@ -72,7 +72,10 @@ pub fn get_embedded_skill() -> Result<Skill> {
 
 /// Get all embedded skill definitions
 pub fn get_embedded_skills() -> Result<Vec<Skill>> {
-    Ok(vec![register_embedded_skill(AGENT_SKILLS_RUST_CONTENT, &[])?])
+    Ok(vec![register_embedded_skill(
+        AGENT_SKILLS_RUST_CONTENT,
+        &[],
+    )?])
 }
 
 #[cfg(test)]
