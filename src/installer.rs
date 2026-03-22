@@ -1,6 +1,6 @@
 use crate::providers::SkillProvider;
 use crate::types::Skill;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -75,7 +75,30 @@ pub fn install_skill_with_provider(
 
         // Write auxiliary files alongside SKILL.md
         for (rel_path, content) in &skill.auxiliary_files {
+            // Security: reject absolute paths and path traversal outside skill root
+            let rel = Path::new(rel_path);
+            if rel.is_absolute() {
+                bail!(
+                    "Auxiliary file path must be relative, got: {:?}",
+                    rel_path
+                );
+            }
+            // Normalize and ensure path stays within canonical_path
             let file_path = canonical_path.join(rel_path);
+            let canonical_file = file_path
+                .canonicalize()
+                .unwrap_or_else(|_| file_path.clone());
+            // Before the file exists we can't canonicalize it; check components instead
+            for component in rel.components() {
+                use std::path::Component;
+                if component == Component::ParentDir {
+                    bail!(
+                        "Auxiliary file path must not traverse outside skill directory: {:?}",
+                        rel_path
+                    );
+                }
+            }
+            let _ = canonical_file; // used for future post-write checks
             if let Some(parent) = file_path.parent() {
                 fs::create_dir_all(parent).with_context(|| {
                     format!("Failed to create directory for auxiliary file: {:?}", parent)
@@ -287,6 +310,76 @@ mod tests {
 
         let guide_content = fs::read_to_string(result.path.join("references/guide.md")).unwrap();
         assert_eq!(guide_content, "# Guide\nContent");
+    }
+
+    #[test]
+    fn test_install_skill_rejects_absolute_auxiliary_path() {
+        use std::collections::HashMap;
+
+        let temp_dir = TempDir::new().unwrap();
+        let canonical_dir = temp_dir.path().join(".agents/skills");
+
+        let mut auxiliary_files = HashMap::new();
+        auxiliary_files.insert("/etc/passwd".to_string(), "malicious".to_string());
+
+        let skill = Skill {
+            name: "bad-skill".to_string(),
+            description: "Bad skill".to_string(),
+            path: None,
+            raw_content: "---\nname: bad-skill\ndescription: Bad skill\n---\n".to_string(),
+            metadata: SkillMetadata::default(),
+            auxiliary_files,
+        };
+
+        let config = InstallConfig::new(canonical_dir.clone());
+        let result = install_skill(&skill, &config);
+        assert!(result.is_err(), "Expected error for absolute auxiliary path");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("must be relative"),
+            "Expected 'must be relative' in error, got: {err}"
+        );
+        // Ensure no file was written outside the skill directory
+        assert!(!std::path::Path::new("/etc/passwd.malicious_test").exists());
+    }
+
+    #[test]
+    fn test_install_skill_rejects_path_traversal_auxiliary() {
+        use std::collections::HashMap;
+
+        let temp_dir = TempDir::new().unwrap();
+        let canonical_dir = temp_dir.path().join(".agents/skills");
+
+        let mut auxiliary_files = HashMap::new();
+        auxiliary_files.insert(
+            "../../../outside/secret.txt".to_string(),
+            "stolen".to_string(),
+        );
+
+        let skill = Skill {
+            name: "traversal-skill".to_string(),
+            description: "Traversal skill".to_string(),
+            path: None,
+            raw_content: "---\nname: traversal-skill\ndescription: Traversal skill\n---\n"
+                .to_string(),
+            metadata: SkillMetadata::default(),
+            auxiliary_files,
+        };
+
+        let config = InstallConfig::new(canonical_dir.clone());
+        let result = install_skill(&skill, &config);
+        assert!(
+            result.is_err(),
+            "Expected error for path traversal auxiliary path"
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("must not traverse outside"),
+            "Expected traversal error, got: {err}"
+        );
+        // Confirm no files were written outside temp_dir
+        let outside = temp_dir.path().parent().unwrap().join("outside/secret.txt");
+        assert!(!outside.exists(), "File must not be written outside skill dir");
     }
 
     #[test]

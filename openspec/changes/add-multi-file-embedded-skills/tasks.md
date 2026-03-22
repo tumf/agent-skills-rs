@@ -14,3 +14,8 @@
 - Provide a declarative `embedded_skill!` macro for ergonomic multi-file registration
 - Support `include_bytes!` for binary assets (images, compiled scripts)
 - Auto-discover skill files via `build.rs` to reduce manual `include_str!` boilerplate
+
+## Acceptance #1 Failure Follow-up
+
+- [x] Validate `auxiliary_files` paths before writing (reject absolute paths and `..` traversal outside skill root)
+- [x] Add installer tests that assert malicious auxiliary paths are rejected and no files are written outside the canonical skill directory
