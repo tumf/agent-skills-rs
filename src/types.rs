@@ -30,14 +30,14 @@ struct LegacyLockEntry {
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum SkillLockFormat {
+    Legacy {
+        skills: Vec<LegacyLockEntry>,
+    },
     New {
         #[serde(deserialize_with = "deserialize_lock_version")]
         version: String,
         #[serde(default)]
         skills: HashMap<String, LockEntry>,
-    },
-    Legacy {
-        skills: Vec<LegacyLockEntry>,
     },
 }
 
