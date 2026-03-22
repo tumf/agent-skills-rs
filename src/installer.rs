@@ -91,11 +91,26 @@ pub fn install_skill_with_provider(
             // Before the file exists we can't canonicalize it; check components instead
             for component in rel.components() {
                 use std::path::Component;
-                if component == Component::ParentDir {
-                    bail!(
-                        "Auxiliary file path must not traverse outside skill directory: {:?}",
-                        rel_path
-                    );
+                match component {
+                    Component::ParentDir => {
+                        bail!(
+                            "Auxiliary file path must not traverse outside skill directory: {:?}",
+                            rel_path
+                        );
+                    }
+                    Component::RootDir => {
+                        bail!(
+                            "Auxiliary file path must not be rooted (contains root separator): {:?}",
+                            rel_path
+                        );
+                    }
+                    Component::Prefix(_) => {
+                        bail!(
+                            "Auxiliary file path must not contain a path prefix (e.g. drive letter): {:?}",
+                            rel_path
+                        );
+                    }
+                    _ => {}
                 }
             }
             let _ = canonical_file; // used for future post-write checks
@@ -380,6 +395,83 @@ mod tests {
         // Confirm no files were written outside temp_dir
         let outside = temp_dir.path().parent().unwrap().join("outside/secret.txt");
         assert!(!outside.exists(), "File must not be written outside skill dir");
+    }
+
+    #[test]
+    fn test_install_skill_rejects_rooted_auxiliary_path() {
+        // Component::RootDir: on Windows `\foo` is rooted but not absolute (no prefix).
+        // We construct a path whose first component is RootDir by using std::path::PathBuf
+        // from components so the test is meaningful on all platforms.
+        use std::collections::HashMap;
+        use std::path::{Component, PathBuf};
+
+        let temp_dir = TempDir::new().unwrap();
+        let canonical_dir = temp_dir.path().join(".agents/skills");
+
+        // Build a path that begins with Component::RootDir
+        let rooted: PathBuf = [Component::RootDir, Component::Normal("evil".as_ref())]
+            .iter()
+            .collect();
+        let rooted_str = rooted.to_string_lossy().to_string();
+
+        let mut auxiliary_files = HashMap::new();
+        auxiliary_files.insert(rooted_str, "evil".to_string());
+
+        let skill = Skill {
+            name: "rooted-skill".to_string(),
+            description: "Rooted path skill".to_string(),
+            path: None,
+            raw_content: "---\nname: rooted-skill\ndescription: Rooted path skill\n---\n"
+                .to_string(),
+            metadata: SkillMetadata::default(),
+            auxiliary_files,
+        };
+
+        let config = InstallConfig::new(canonical_dir.clone());
+        let result = install_skill(&skill, &config);
+        // On Unix the rooted path is also absolute and caught by is_absolute(); on Windows it
+        // is caught by the Component::RootDir check.  Either way installation must fail.
+        assert!(
+            result.is_err(),
+            "Expected error for rooted auxiliary path (absolute or root component)"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_install_skill_rejects_prefixed_auxiliary_path() {
+        // On Windows, `C:relative` has Component::Prefix but is NOT absolute (no root `/`).
+        // is_absolute() returns false, so only the Component::Prefix check catches it.
+        use std::collections::HashMap;
+
+        let temp_dir = TempDir::new().unwrap();
+        let canonical_dir = temp_dir.path().join(".agents/skills");
+
+        let mut auxiliary_files = HashMap::new();
+        // "C:relative" — prefix only, no root separator, not caught by is_absolute()
+        auxiliary_files.insert("C:relative\\path".to_string(), "evil".to_string());
+
+        let skill = Skill {
+            name: "prefixed-skill".to_string(),
+            description: "Prefixed path skill".to_string(),
+            path: None,
+            raw_content: "---\nname: prefixed-skill\ndescription: Prefixed path skill\n---\n"
+                .to_string(),
+            metadata: SkillMetadata::default(),
+            auxiliary_files,
+        };
+
+        let config = InstallConfig::new(canonical_dir.clone());
+        let result = install_skill(&skill, &config);
+        assert!(
+            result.is_err(),
+            "Expected error for prefixed auxiliary path (Windows drive-relative)"
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("path prefix"),
+            "Expected 'path prefix' in error, got: {err}"
+        );
     }
 
     #[test]

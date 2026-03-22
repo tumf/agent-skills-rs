@@ -19,3 +19,8 @@
 
 - [x] Validate `auxiliary_files` paths before writing (reject absolute paths and `..` traversal outside skill root)
 - [x] Add installer tests that assert malicious auxiliary paths are rejected and no files are written outside the canonical skill directory
+
+## Acceptance #2 Failure Follow-up
+
+- [x] Harden auxiliary path validation to reject platform-rooted/prefixed paths (e.g., `Component::RootDir` and `Component::Prefix`) in addition to `is_absolute` and `ParentDir`
+- [x] Add platform-aware tests for rooted/prefixed auxiliary paths (Windows) to ensure writes cannot escape the canonical skill directory
